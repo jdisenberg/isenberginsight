@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-labelledby="title desc">
+  <title id="title">Isenberg Health Logo</title>
+  <desc id="desc">Circular blue and teal mark with Isenberg Health text.</desc>
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9ad4d7" />
+      <stop offset="100%" stop-color="#1f4f8f" />
+    </linearGradient>
+    <linearGradient id="g2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#45b7bf" />
+      <stop offset="100%" stop-color="#123f83" />
+    </linearGradient>
+  </defs>
+  <rect width="320" height="320" fill="#ffffff" />
+  <circle cx="160" cy="112" r="72" fill="none" stroke="url(#g1)" stroke-width="22" stroke-dasharray="340 140" />
+  <circle cx="160" cy="206" r="72" fill="none" stroke="url(#g2)" stroke-width="22" stroke-dasharray="335 145" transform="rotate(180 160 206)" />
+  <text x="160" y="162" text-anchor="middle" font-family="'Avenir Next', Avenir, 'Segoe UI', sans-serif" font-size="54" fill="#214a82" font-weight="600">Isenberg</text>
+  <text x="160" y="206" text-anchor="middle" font-family="'Avenir Next', Avenir, 'Segoe UI', sans-serif" font-size="26" fill="#2ea8b1" letter-spacing="7">HEALTH</text>
+</svg>

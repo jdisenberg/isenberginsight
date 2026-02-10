@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Isenberg Insight- Wound Report Checker</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <div class="brand">
+          <img src="./assets/isenberg-health-logo.svg" alt="Isenberg Health logo" class="brand-logo" />
+          <div>
+            <h1>Isenberg Insight- Wound Report Checker</h1>
+            <p>Choose a tool, upload your report, and export results.</p>
+          </div>
+        </div>
+      </header>
+
+      <section id="splashView" class="panel">
+        <h2>Choose Program</h2>
+        <p class="hint">Start with one of the two report tools below.</p>
+        <div class="card-grid">
+          <button id="openTabularBtn" class="tool-card" type="button">
+            <strong>Tabular Report</strong>
+            <span>Run discrepancy checks on charting quality.</span>
+          </button>
+          <button id="openGraftBtn" class="tool-card" type="button">
+            <strong>Graft Candidate Checker</strong>
+            <span>Find wounds that did not improve 40% over the latest 30-day window.</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="tabularView" class="hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2>Tabular Report</h2>
+            <button id="backFromTabularBtn" class="secondary-btn" type="button">Back to Splash</button>
+          </div>
+          <div class="row">
+            <input id="tabularFileInput" type="file" accept=".xlsx,.xls,.xlsm,.csv" />
+            <select id="tabularSheetSelect" disabled>
+              <option value="">Select sheet</option>
+            </select>
+          </div>
+          <p id="tabularFileMeta" class="hint">No file loaded yet.</p>
+          <p id="tabularSummary" class="hint">No checks run yet.</p>
+          <div class="row">
+            <button id="tabularRunBtn" disabled type="button">Run audit checks</button>
+            <button id="tabularExportBtn" disabled type="button">Export results CSV</button>
+          </div>
+          <div class="table-wrap">
+            <table id="tabularResultsTable">
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  <th>Patient</th>
+                  <th>Assessment Date</th>
+                  <th>Check</th>
+                  <th>Column</th>
+                  <th>Value</th>
+                  <th>Issue</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="graftView" class="hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2>Graft Candidate Checker</h2>
+            <button id="backFromGraftBtn" class="secondary-btn" type="button">Back to Splash</button>
+          </div>
+          <p class="hint">
+            Uses latest visit vs the visit closest to 30 days prior. Flags rows with less than 40% area decrease.
+          </p>
+          <div class="row">
+            <input id="graftFileInput" type="file" accept=".xlsx,.xls,.xlsm,.csv" />
+            <select id="graftSheetSelect" disabled>
+              <option value="">Select sheet</option>
+            </select>
+          </div>
+          <p id="graftFileMeta" class="hint">No file loaded yet.</p>
+          <p id="graftSummary" class="hint">No checks run yet.</p>
+          <div class="row">
+            <button id="graftRunBtn" disabled type="button">Run graft candidate checks</button>
+            <button id="graftExportBtn" disabled type="button">Export candidates XLSX</button>
+          </div>
+          <div class="table-wrap">
+            <table id="graftResultsTable">
+              <thead>
+                <tr>
+                  <th>Patient</th>
+                  <th>Wound Number</th>
+                  <th>30-Day Prior Date</th>
+                  <th>30-Day Prior Area (cm2)</th>
+                  <th>Latest Date</th>
+                  <th>Latest Area (cm2)</th>
+                  <th>% Area Change</th>
+                  <th>Trend</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
