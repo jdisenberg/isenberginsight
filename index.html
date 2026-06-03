@@ -2,117 +2,272 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Isenberg Insight- Wound Report Checker</title>
-    <link rel="stylesheet" href="./styles.css" />
-    <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <script defer src="./app.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='16' fill='%236b1f2a'/%3E%3Cline x1='10' y1='40' x2='70' y2='40' stroke='%23f5ece8' stroke-width='2' stroke-linecap='round'/%3E%3Cline x1='20' y1='25' x2='28' y2='55' stroke='%23c49a18' stroke-width='4' stroke-linecap='round'/%3E%3Cline x1='36' y1='25' x2='44' y2='55' stroke='%23c49a18' stroke-width='4' stroke-linecap='round'/%3E%3Cline x1='52' y1='25' x2='60' y2='55' stroke='%23c49a18' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <title>Cicatrix — Wound Care Assessment</title>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app">
+    <main id="appRoot" class="app">
       <header>
         <div class="brand">
-          <img src="./assets/isenberg-health-logo.svg" alt="Isenberg Health logo" class="brand-logo" />
+          <svg id="brandLogoMark" class="brand-logo" viewBox="0 0 80 80" aria-label="Cicatrix mark" role="img" xmlns="http://www.w3.org/2000/svg">
+            <title>Cicatrix suture mark</title>
+            <line x1="10" y1="40" x2="70" y2="40" stroke="rgba(245,236,232,0.9)" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="20" y1="25" x2="28" y2="55" stroke="#c49a18" stroke-width="3" stroke-linecap="round"/>
+            <line x1="36" y1="25" x2="44" y2="55" stroke="#c49a18" stroke-width="3" stroke-linecap="round"/>
+            <line x1="52" y1="25" x2="60" y2="55" stroke="#c49a18" stroke-width="3" stroke-linecap="round"/>
+          </svg>
           <div>
-            <h1>Isenberg Insight- Wound Report Checker</h1>
-            <p>Choose a tool, upload your report, and export results.</p>
+            <h1>Cicatrix</h1>
+            <p>Wound care assessment and treatment considerations.</p>
+            <div class="brand-actions">
+              <a id="sourceButton" class="source-button" href="#">Sources &amp; Rationale</a>
+              <a id="settingsButton" class="source-button" href="#">Settings</a>
+            </div>
           </div>
         </div>
       </header>
 
-      <section id="splashView" class="panel">
-        <h2>Choose Program</h2>
-        <p class="hint">Start with one of the two report tools below.</p>
-        <div class="card-grid">
-          <button id="openTabularBtn" class="tool-card" type="button">
-            <strong>Tabular Report</strong>
-            <span>Run discrepancy checks on charting quality.</span>
-          </button>
-          <button id="openGraftBtn" class="tool-card" type="button">
-            <strong>Graft Candidate Checker</strong>
-            <span>Find wounds that did not improve 40% over the latest 30-day window.</span>
-          </button>
+      <section class="panel">
+        <div class="row between">
+          <h2>Wound Inputs</h2>
+        </div>
+        <form id="analyzeForm">
+          <div id="manualWoundList" class="manual-wound-list"></div>
+          <input id="historyDir" name="history_dir" type="hidden" value="local browser storage" />
+          <input id="historyApi" name="history_api" type="hidden" value="" />
+          <div class="manual-actions">
+            <button id="addWoundButtonBottom" type="button">Add Another Wound</button>
+            <button id="runBtn" type="submit">Generate Considerations</button>
+          </div>
+        </form>
+        <p id="statusText" class="hint">Ready.</p>
+      </section>
+
+      <section id="settingsPanel" class="panel hidden">
+        <div class="row between">
+          <h2>Settings</h2>
+          <button id="settingsClose" type="button">Hide Settings</button>
+        </div>
+        <p class="hint">Open tools and reset individual settings.</p>
+        <div class="settings-grid">
+          <section class="settings-item">
+            <div>
+              <h3>Supplies Filter</h3>
+              <p class="hint">Choose which products are considered in recommendations.</p>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settingsSuppliesButton" type="button">Open</button>
+              <button id="settingsResetSuppliesButton" type="button">Reset</button>
+            </div>
+          </section>
+          <section class="settings-item">
+            <div>
+              <h3>Narrative Phrases</h3>
+              <p class="hint">Custom narrative wording templates.</p>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settingsPhraseButton" type="button">Open</button>
+              <button id="settingsResetPhrasesButton" type="button">Reset</button>
+            </div>
+          </section>
+          <section class="settings-item">
+            <div>
+              <h3>Narrative Style</h3>
+              <p class="hint">Chart narrative style preference.</p>
+            </div>
+            <div class="settings-item-actions">
+              <button id="settingsResetNarrativeStyleButton" type="button">Reset</button>
+            </div>
+          </section>
         </div>
       </section>
 
-      <section id="tabularView" class="hidden">
-        <div class="panel">
-          <div class="row between">
-            <h2>Tabular Report</h2>
-            <button id="backFromTabularBtn" class="secondary-btn" type="button">Back to Splash</button>
+      <section id="previewPanel" class="panel hidden">
+        <div class="row between">
+          <h2>Considerations By Wound</h2>
+          <div class="download-group">
+            <a id="printPacketButton" class="download-link" href="#">Printer Friendly</a>
           </div>
-          <div class="row">
-            <input id="tabularFileInput" type="file" accept=".xlsx,.xls,.xlsm,.csv" />
-            <select id="tabularSheetSelect" disabled>
-              <option value="">Select sheet</option>
-            </select>
-          </div>
-          <p id="tabularFileMeta" class="hint">No file loaded yet.</p>
-          <p id="tabularSummary" class="hint">No checks run yet.</p>
-          <div class="row">
-            <button id="tabularRunBtn" disabled type="button">Run audit checks</button>
-            <button id="tabularExportBtn" disabled type="button">Export results CSV</button>
-          </div>
-          <div class="table-wrap">
-            <table id="tabularResultsTable">
-              <thead>
-                <tr>
-                  <th>Row</th>
-                  <th>Patient</th>
-                  <th>Assessment Date</th>
-                  <th>Check</th>
-                  <th>Column</th>
-                  <th>Value</th>
-                  <th>Issue</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
+        </div>
+        <p class="hint">Treatment considerations by patient and wound.</p>
+        <div class="table-wrap">
+          <table id="previewTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
         </div>
       </section>
 
-      <section id="graftView" class="hidden">
-        <div class="panel">
-          <div class="row between">
-            <h2>Graft Candidate Checker</h2>
-            <button id="backFromGraftBtn" class="secondary-btn" type="button">Back to Splash</button>
-          </div>
-          <p class="hint">
-            Uses latest visit vs the visit closest to 30 days prior. Flags rows with less than 40% area decrease.
-          </p>
-          <div class="row">
-            <input id="graftFileInput" type="file" accept=".xlsx,.xls,.xlsm,.csv" />
-            <select id="graftSheetSelect" disabled>
-              <option value="">Select sheet</option>
+      <section id="narrativePanel" class="panel hidden">
+        <div class="row between">
+          <h2>Chart Narrative</h2>
+          <div class="narrative-controls">
+            <label for="narrativeStyle">Narrative Style</label>
+            <select id="narrativeStyle" name="narrative_style">
+              <option value="detailed">Detailed</option>
+              <option value="concise">Concise</option>
             </select>
           </div>
-          <p id="graftFileMeta" class="hint">No file loaded yet.</p>
-          <p id="graftSummary" class="hint">No checks run yet.</p>
-          <div class="row">
-            <button id="graftRunBtn" disabled type="button">Run graft candidate checks</button>
-            <button id="graftExportBtn" disabled type="button">Export candidates XLSX</button>
+        </div>
+        <p class="hint">Select and copy any part of the narrative directly from this box.</p>
+        <div id="narrativeText" class="narrative-view" aria-label="Chart narrative"></div>
+      </section>
+
+      <section id="auditLogPanel" class="panel hidden">
+        <div class="row between">
+          <h2>Clinical Audit Log</h2>
+          <button id="auditLogClose" type="button">Hide Audit Log</button>
+        </div>
+        <p class="hint">Tracks site access, entry usage, retention policy changes, purges, and reset actions. Uses cloud logs when available, otherwise local browser logs.</p>
+        <p id="auditLogMeta" class="audit-log-meta">Log source: local browser</p>
+        <div id="auditLogSummary" class="audit-summary-grid"></div>
+        <div class="table-wrap">
+          <table id="auditLogTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="printPacketPanel" class="hidden" aria-hidden="true">
+        <div id="printPacketContent" class="print-packet-content"></div>
+      </section>
+
+      <section id="suppliesPanel" class="hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2>Supplies Filter</h2>
+            <button id="suppliesClose" type="button">Hide Supplies</button>
           </div>
+          <p class="hint">Check only supplies you want included in treatment considerations.</p>
+          <div class="row">
+            <button id="suppliesSelectAll" type="button">Select All</button>
+            <button id="suppliesClearAll" type="button">Clear All</button>
+          </div>
+          <div id="suppliesList" class="supplies-grid"></div>
+        </div>
+      </section>
+
+      <section id="phrasesPanel" class="hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2>Narrative Phrase Editor</h2>
+            <button id="phrasesClose" type="button">Hide Phrase Editor</button>
+          </div>
+          <p class="hint">Edit core narrative phrases. Keep placeholders such as <code>{patient_name}</code>, <code>{wound_count}</code>, or <code>{status}</code> when shown.</p>
+          <form id="phrasesForm">
+            <div id="phraseFields" class="phrase-grid"></div>
+            <div class="row">
+              <button id="phrasesSave" type="submit">Save Phrase Changes</button>
+              <button id="phrasesReset" type="button">Reset Defaults</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="sourcesPanel" class="hidden">
+        <div class="panel">
+          <div class="row between">
+            <h2>Clinical Sources &amp; Rationale</h2>
+            <button id="sourcesClose" type="button">Hide Sources</button>
+          </div>
+          <div id="sourceList"></div>
+        </div>
+        <div class="panel">
+          <h2>Treatment-to-Rationale Source Map</h2>
           <div class="table-wrap">
-            <table id="graftResultsTable">
-              <thead>
-                <tr>
-                  <th>Patient</th>
-                  <th>Wound Number</th>
-                  <th>30-Day Prior Date</th>
-                  <th>30-Day Prior Area (cm2)</th>
-                  <th>Latest Date</th>
-                  <th>Latest Area (cm2)</th>
-                  <th>% Area Change</th>
-                  <th>Trend</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
+            <table id="sourceMapTable">
+              <thead></thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
       </section>
     </main>
-  </body>
+    <button id="backToTopButton" class="back-to-top" type="button" aria-label="Back to top">Back to Top</button>
+  
+    <section id="nameGateOverlay" class="name-gate-overlay" role="dialog" aria-modal="true" aria-labelledby="nameGateTitle" aria-describedby="nameGateDescription">
+      <form id="nameGateForm" class="name-gate-card" autocomplete="on" novalidate>
+        <div class="name-gate-top">
+          <svg class="name-gate-mark" viewBox="0 0 80 80" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <rect width="80" height="80" rx="16" fill="rgba(42,15,22,0.97)"/>
+            <line x1="10" y1="40" x2="70" y2="40" stroke="rgba(245,236,232,0.9)" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="20" y1="25" x2="28" y2="55" stroke="#c49a18" stroke-width="3" stroke-linecap="round"/>
+            <line x1="36" y1="25" x2="44" y2="55" stroke="#c49a18" stroke-width="3" stroke-linecap="round"/>
+            <line x1="52" y1="25" x2="60" y2="55" stroke="#c49a18" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <div>
+            <span class="name-gate-kicker">Cicatrix</span>
+            <h2 id="nameGateTitle">Enter Your Name</h2>
+          </div>
+        </div>
+        <p id="nameGateDescription" class="name-gate-copy">Enter your name to continue. This is used only to identify your session and is never stored after you close the page.</p>
+        <label class="name-gate-field" for="nameGateInput">
+          <span>Name</span>
+          <input id="nameGateInput" name="name" type="text" maxlength="80" autocomplete="name" placeholder="First Last" required />
+        </label>
+        <div class="name-gate-acks" role="group" aria-label="Required acknowledgements">
+          <label class="name-gate-check" for="nameGateClinicalAck">
+            <input id="nameGateClinicalAck" type="checkbox" required />
+            <span>I understand that Cicatrix is a clinical support tool only. It does not diagnose, prescribe, replace clinical judgment, or replace healthcare workers. All outputs are treatment considerations only and must be reviewed by a qualified healthcare professional before use in patient care.</span>
+          </label>
+          <label class="name-gate-check" for="nameGateAgreeAck">
+            <input id="nameGateAgreeAck" type="checkbox" required />
+            <span>I have read and agree to the Terms and Agreements.</span>
+          </label>
+        </div>
+        <p class="name-gate-terms"><a id="nameGateTermsLink" href="#termsAndAgreements">Terms and Agreements</a></p>
+        <p id="nameGateError" class="name-gate-error" aria-live="polite"></p>
+        <button id="nameGateSubmit" type="submit">Continue</button>
+      </form>
+      <section id="termsDialog" class="terms-dialog" role="dialog" aria-modal="true" aria-labelledby="termsDialogTitle" hidden>
+        <div class="terms-card">
+          <h2 id="termsDialogTitle">Cicatrix Terms of Use &amp; Clinical Disclaimer</h2>
+          <div class="terms-content" tabindex="0">
+            <h3>1. Purpose of Cicatrix</h3>
+            <p>Cicatrix is a clinical support tool designed to help healthcare workers organize wound-related information and review possible treatment considerations. The information generated by Cicatrix is intended to support clinical thinking, documentation, and care planning.</p>
+            <p>Cicatrix does not diagnose patients, prescribe treatment, replace medical decision-making, or independently determine a patient&rsquo;s plan of care.</p>
+            <p>All outputs from Cicatrix should be treated as items to consider, not as final medical recommendations.</p>
+            <h3>2. Not a Replacement for Clinical Judgment</h3>
+            <p>Cicatrix is not a substitute for the professional judgment, training, experience, or decision-making of licensed healthcare workers.</p>
+            <p>Healthcare providers remain solely responsible for evaluating each patient, interpreting clinical findings, reviewing medical history, assessing risks, confirming diagnoses, determining appropriate treatments, and following applicable laws, regulations, facility policies, payer requirements, and standards of care.</p>
+            <p>The use of Cicatrix does not remove or reduce the responsibility of the treating clinician or healthcare organization.</p>
+            <h3>3. Treatment Considerations Only</h3>
+            <p>Any treatment options, wound care suggestions, dressing considerations, debridement considerations, offloading suggestions, compression considerations, infection-related prompts, vascular prompts, or other outputs generated by Cicatrix are provided for informational and educational support only.</p>
+            <p>These outputs are not orders, prescriptions, protocols, standing orders, or mandatory instructions.</p>
+            <p>Before acting on any information generated by Cicatrix, the healthcare worker must independently determine whether the information is clinically appropriate for the specific patient.</p>
+            <h3>4. Patient-Specific Care Required</h3>
+            <p>Wound care decisions must be based on the patient&rsquo;s full clinical picture, including but not limited to patient history, wound type, wound location, wound measurements, tissue characteristics, drainage, odor, infection signs, pain, perfusion status, vascular studies, pressure risk, diabetic status, nutrition, medications, allergies, comorbidities, mobility, goals of care, facility resources, and provider scope of practice.</p>
+            <p>Cicatrix may not account for all patient-specific details or clinical circumstances.</p>
+            <h3>5. No Emergency or Urgent Care Use</h3>
+            <p>Cicatrix is not intended for emergency medical use. If a patient has signs of a medical emergency, severe infection, sepsis, rapidly worsening wounds, uncontrolled bleeding, acute ischemia, necrotizing infection, or any other urgent condition, follow emergency procedures immediately.</p>
+            <h3>6. Accuracy and Limitations</h3>
+            <p>While Cicatrix is designed to provide helpful wound care considerations, it may produce incomplete, outdated, incorrect, or inappropriate information. Users are responsible for verifying all information before relying on it.</p>
+            <h3>7. Product and Treatment Responsibility</h3>
+            <p>Any mention of a dressing, device, medication, or intervention is for consideration only. Users must review manufacturer instructions, contraindications, warnings, facility policy, and applicable clinical guidelines before using any product or treatment.</p>
+            <h3>8. Scope of Practice</h3>
+            <p>Users are responsible for ensuring that any care decision or procedure is within their professional license, training, competency, and authorized scope of practice.</p>
+            <h3>9. Privacy and Patient Information</h3>
+            <p>Users should only enter information into Cicatrix in accordance with their organization&rsquo;s privacy policies, HIPAA requirements, and applicable laws. No patient data entered during a session is stored after the page is closed.</p>
+            <h3>10. Acceptance of Terms</h3>
+            <p>By continuing to use Cicatrix, the user acknowledges that Cicatrix is a support tool only and does not replace licensed healthcare professionals, clinical judgment, direct patient assessment, medical orders, or the standards of care required in wound treatment. The user accepts full responsibility for reviewing, verifying, and applying any information generated by Cicatrix before using it in patient care.</p>
+          </div>
+          <button id="termsDialogClose" type="button">Close</button>
+        </div>
+      </section>
+    </section>
+
+    <script src="app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js")
+            .then(() => console.log("[Cicatrix] Offline mode ready"))
+            .catch((err) => console.warn("[Cicatrix] Service worker not registered:", err));
+        });
+      }
+    </script>
+</body>
 </html>
