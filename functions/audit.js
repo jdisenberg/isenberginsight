@@ -2,14 +2,15 @@
  * Cicatrix Audit Log — Cloudflare Pages Function
  * Endpoint: /audit
  *
- * POST /audit          — called by the app on every audit event (no auth required)
- * GET  /audit?secret=  — returns all events as JSON (requires AUDIT_SECRET env var)
+ * POST /audit  — called by the app on every session event (no auth required)
+ * GET  /audit  — returns all stored events as a JSON array
  *
- * Setup (one-time, in Cloudflare dashboard):
- *   1. Pages → cicatrix → Settings → Functions → KV namespace bindings
- *      Binding name: CICATRIX_AUDIT   (create a new KV namespace with this name)
- *   2. Pages → cicatrix → Settings → Environment variables
- *      AUDIT_SECRET = <choose any long random string — this is your admin password>
+ * One-time setup in the Cloudflare dashboard:
+ *   Pages → isenberginsight → Settings → Functions → KV namespace bindings
+ *   Add binding:  Variable name = CICATRIX_AUDIT  (create a new KV namespace)
+ *
+ * Without the KV binding, POST and GET both return 503 and the app falls back
+ * to showing only the current browser session in the audit log.
  */
 
 const CORS = {
