@@ -296,7 +296,7 @@
   let manualWoundSerial = 0;
 
   function setStatus(text) {
-    els.statusText.textContent = text;
+    if (els.statusText) els.statusText.textContent = text;
   }
 
   function setBusy(isBusy) {
