@@ -21,7 +21,6 @@
         { label: "DailyMed Santyl label - silver/heavy metal compatibility cautions", url: "https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=6b6fbfc6-98fa-46aa-88ef-ab00fbb08ffd" },
       ],
     },
-,
     {
       title: "New Wound Type Pathways — Clinical Sources",
       items: [
