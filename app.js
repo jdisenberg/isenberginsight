@@ -7428,7 +7428,13 @@
       });
       setStatus(`Considerations complete — ${latestRows.length} wound${latestRows.length === 1 ? "" : "s"}. No data has been saved.`);
     } catch (err) {
-      setStatus(`Error: ${err?.message || err}`);
+      const msg = `Error: ${err?.message || err}`;
+      setStatus(msg);
+      console.error("[Cicatrix] analyzeReport error:", err);
+      if (els.narrativePanel) {
+        els.narrativeText.innerHTML = `<p style="color:#c0392b;font-weight:600">${escapeHtml(msg)}</p>`;
+        els.narrativePanel.classList.remove("hidden");
+      }
     } finally {
       setBusy(false);
     }
@@ -7463,8 +7469,8 @@
     ensureDeviceDebridementSuppliesSelected();
 
     renderSuppliesPanel();
-    renderSources();
-    ensureManualWoundCard();
+    try { renderSources(); } catch (err) { console.error("[Cicatrix] renderSources failed:", err); }
+    try { ensureManualWoundCard(); } catch (err) { console.error("[Cicatrix] ensureManualWoundCard failed:", err); }
     if (els.nameGateForm) {
       els.nameGateForm.addEventListener("submit", handleNameGateSubmit);
     }
