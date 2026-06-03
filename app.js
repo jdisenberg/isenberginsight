@@ -2281,6 +2281,39 @@
       woundTypeText.includes("ecf") ||
       woundTypeText.includes("enterocutaneous")
     );
+    const surgicalWound = (
+      woundTypeText.includes("surgical") ||
+      woundTypeText.includes("dehiscence") ||
+      woundTypeText.includes("post-op") ||
+      woundTypeText.includes("postop") ||
+      woundTypeText.includes("incision")
+    );
+    const osteomyelitisWound = (
+      woundTypeText.includes("osteomyelitis") ||
+      woundTypeText.includes("exposed bone") ||
+      woundTypeText.includes("bone exposed")
+    );
+    const vasculiticUlcer = (
+      woundTypeText.includes("vasculit") ||
+      woundTypeText.includes("vasculitic")
+    );
+    const martorell = (
+      woundTypeText.includes("martorell") ||
+      woundTypeText.includes("hypertensive ischemic") ||
+      woundTypeText.includes("hilu")
+    );
+    const hidradenitisSuppurativa = (
+      woundTypeText.includes("hidradenitis") ||
+      woundTypeText.includes("hs ") ||
+      woundTypeText === "hs" ||
+      woundTypeText.includes("suppurativa")
+    );
+    const graftWound = (
+      woundTypeText.includes("graft") ||
+      woundTypeText.includes("stsg") ||
+      woundTypeText.includes("ftsg") ||
+      woundTypeText.includes("donor site")
+    );
 
     /* Periwound condition from new field */
     const periWoundCondition = normalizeText(latest.periwound_condition || latest.periwound_text || "");
@@ -2420,7 +2453,8 @@
       potentialBioburden, exudateProxy,
       pyodermaGangrenosum, burnWound, masdRelated, radiationWound, hypergranulationPresent,
       necrotizingFasciitis, skinTear, malignantWound, calciphylaxisWound, traumaticWound, fistulaWound,
-      osteomyelitisSignal: (woundTypeText.includes("osteomyelitis")),
+      surgicalWound, osteomyelitisWound, vasculiticUlcer, martorell, hidradenitisSuppurativa, graftWound,
+      osteomyelitisSignal: (osteomyelitisWound || woundTypeText.includes("osteomyelitis")),
       epiboleSignal: (periWoundCallused || woundTypeText.includes("epibole") || woundTypeText.includes("rolled edge")),
       periWoundCondition, periWoundMacerated, periWoundCallused,
       abiDocumented, abiInadequateForCompression, abiMildImpairment, abiRange,
@@ -3363,10 +3397,30 @@
       return finalize(out);
     }
 
-    if (c.radiationWound) {
-      add("high", "Radiation Wound Management", "Conservative management: gentle moisture-balance dressing, protect from trauma and infection — no aggressive debridement without specialist input", "Radiation-impaired tissue has progressive hypoxia and poor regenerative capacity. Aggressive debridement risks non-healing surgical wounds. Conservative management is foundational.", "Refer to radiation oncology for any wound healing delay; coordinate with oncology team before any procedural intervention.");
-      add("medium", "Radiation Wound Adjunct", "Hyperbaric oxygen therapy (HBOT) referral for radiation soft tissue necrosis or osteoradionecrosis", "HBOT promotes angiogenesis in hypoxic radiation-damaged tissue. Cochrane evidence supports use for osteoradionecrosis and soft tissue radiation necrosis.", "Requires HBOT center with appropriate indication criteria; 20-40 sessions typically needed; contraindications include pneumothorax, certain medications.");
-      add("low", "Radiation Wound Dressing", "Non-adherent moisture-retaining dressing for fragile irradiated skin wounds", "Atraumatic dressings (silicone contact layers, hydrogel) protect fragile irradiated tissue from further trauma at dressing changes.", "Avoid adhesive products on irradiated skin; handle tissue with extreme gentleness; warm dressing solutions to body temperature before contact.");
+    if (c.radiationWound && !c.burnWound) {
+      const isORN = c.woundTypeText.includes("osteoradionecrosis") || c.woundTypeText.includes("orn") || (c.osteomyelitisSignal && c.woundTypeText.includes("radiation"));
+      const isAcute = c.woundTypeText.includes("acute") || (c.woundAgeDays != null && c.woundAgeDays < 90);
+
+      add("high", "⚠ Radiation Wound — Oncology Coordination", "Mandatory coordination with radiation oncology and/or surgical oncology before ANY debridement or procedural intervention", "Radiation-damaged tissue has progressive obliterative endarteritis causing permanent hypoxia and loss of regenerative capacity (Marx fibrosis-atrophy-hypoxia triad). Standard wound care principles fail in this tissue. Treatment decisions must account for prior total dose, fractionation, field, and time since last radiation.", "Document: cumulative radiation dose, date of last treatment, treatment field, whether wound was present pre-treatment or appeared post-treatment; this context determines pathway and intervention safety.");
+
+      if (isORN) {
+        add("high", "Osteoradionecrosis (ORN) — Marx HBOT Protocol", "Hyperbaric oxygen therapy: Marx protocol — 30 dives pre-operatively (100% O2 at 2.4 ATA, 90 min sessions) + 10 post-operatively if surgical debridement planned; 20-30 dives for non-surgical management", "HBOT is the cornerstone of ORN management. Marx's original RCT (1983) demonstrated significantly superior outcomes vs antibiotics alone. Mechanism: stimulates angiogenesis (VEGF/collagen) in hypoxic tissue, restores oxygen gradient for wound healing. Cochrane review supports use for jaw ORN (highest evidence); extrapolated to other sites.", "Contraindications: untreated pneumothorax, concurrent bleomycin/doxorubicin/cisplatin (check oncology), severe COPD; requires hyperbaric medicine consultation and chamber access; 20-40 total dives; each session approximately 2 hours.");
+        add("high", "ORN — Surgical Planning", "Surgical debridement and reconstruction planning (sequestrectomy, ostectomy, or resection with vascularized flap) coordinated with HBOT course", "Non-perfused bone must be removed for healing to occur. Vascularized free flaps (fibula free flap for mandibular ORN; other sites vary) bring non-irradiated tissue and new vasculature into the radiation field. Timing relative to HBOT course is protocol-driven.", "Refer to head/neck oncology surgery or reconstructive surgery with radiation wound experience; HBOT pre/post-op improves flap take rates; plan multidisciplinary tumor board review.");
+        add("medium", "ORN — Local Wound Management", "Conservative: non-adherent moisture-retaining primary dressing; gentle saline irrigation; protect exposed bone from trauma and desiccation; strict oral hygiene for jaw ORN", "Moist wound environment protects exposed bone from desiccation and secondary infection while definitive treatment is being arranged. Exposed bone that desiccates becomes infected and further necrotic.", "Avoid betadine on exposed bone; avoid pressure on exposed bone surfaces; soft diet if jaw ORN; gentle chlorhexidine rinse for oral ORN.");
+        add("medium", "ORN — Pentoxifylline + Vitamin E (PENTOCLO)", "Consider pentoxifylline 400mg TID + vitamin E 1000 IU/day for early/minimal ORN or as adjunct; PENTOCLO adds clodronate for bone involvement", "PENTOCLO (pentoxifylline + tocopherol + clodronate) — pilot RCTs show regression of ORN in 20-50% of cases. Mechanism: pentoxifylline reduces fibrosis (TGF-beta blockade), vitamin E is antioxidant/anti-fibrotic, clodronate inhibits osteoclasts.", "Prescriber decision; treatment course typically 6-12 months; monitor CBC, renal function; pentoxifylline contraindicated in recent MI/stroke; coordinate with oncology.");
+      } else if (isAcute) {
+        add("high", "Acute Radiation Dermatitis — CTCAE Grading", "Grade per CTCAE v5.0: Grade 1 (faint erythema/dry desquamation) = emollients only. Grade 2 (moderate erythema/moist desquamation in folds) = non-adherent moisture dressings. Grade 3 (moist desquamation outside folds, pitting edema) = non-adherent silver/foam + radiation oncology review. Grade 4 (full-thickness necrosis/ulceration) = urgent specialist consult, possible treatment break.", "CTCAE grading drives management intensity. Grade 3-4 requires radiation oncology coordination — treatment breaks and dose modifications may be indicated. Premature or delayed escalation both cause harm.", "Obtain CTCAE grade from radiation oncology; document grade in wound notes; Grade 4 = urgent escalation; never debride Grade 3-4 without specialist direction.");
+        add("high", "Acute Radiation Dermatitis — Dressing", "Grade 1-2: soft silicone non-adherent dressing (Mepitel One, Mepilex Lite) or hydrogel/petrolatum gauze for moist desquamation; emollient for dry erythema. Grade 3+: non-adherent soft silicone or hydrofiber dressing changed per saturation.", "RCT evidence (Diggelmann 2010, Wooding 2018) supports silicone-based non-adherent dressings over standard care for radiation dermatitis: less severe moist desquamation, better comfort, fewer treatment breaks. MASCC guidelines 2020 recommend mild soap/water cleansing and non-adherent dressings.", "Avoid adhesive dressings and tape on irradiated in-field skin; avoid friction/washcloths; avoid heating/cooling pads on field; avoid silver sulfadiazine as first-line — inferior pain scores and healing impairment vs silicone in RCTs.");
+        add("medium", "Acute Radiation Dermatitis — Topical", "Emollient TID (non-perfumed: Aquaphor, DermaVeen) to reduce dry desquamation. Grade 2+ moist desquamation: topical corticosteroid (betamethasone 0.1% or mometasone) for pruritus/inflammation — with radiation oncology approval only.", "MASCC/ISOO systematic review: emollients reduce Grade 2+ dermatitis incidence. Topical corticosteroids (low-medium potency) reduce pruritus and inflammation. Avoid high-potency steroids on irradiated skin.", "Radiation oncology to direct topical steroid use; avoid cosmetics, perfumed products, and aluminum-containing antiperspirants within field during treatment.");
+      } else {
+        add("high", "Chronic Radiation Wound — Conservative First Line", "Non-adherent moisture-retaining primary dressing (silicone contact layer, hydrogel, soft foam); no aggressive debridement without specialist consultation", "Chronic radiation wounds have permanently impaired healing (Marx fibrosis-atrophy-hypoxia triad). Aggressive debridement creates non-healing surgical defects in this tissue. Conservative moisture balance is foundational.", "Document time since radiation, total dose if known; any debridement must be discussed with radiation oncology/wound surgery; avoid sharp/enzymatic debridement without specialist plan.");
+        add("high", "Chronic Radiation Wound — HBOT Referral", "Referral to hyperbaric oxygen medicine for chronic soft tissue radiation necrosis or non-healing radiation wound", "HBOT (20-40 sessions at 2.4 ATA, 90 min each) promotes angiogenesis in hypoxic radiation tissue. Cochrane evidence supports use for radiation soft tissue necrosis.", "Contraindications: pneumothorax, bleomycin/doxorubicin/cisplatin (check oncology); requires hyperbaric medicine program; protocol determined by hyperbaric physician.");
+        add("medium", "Chronic Radiation Wound — Pentoxifylline + Vitamin E", "Pentoxifylline 400mg TID + vitamin E (tocopherol) 1000 IU/day for 3-6 months — evidence-based adjunct for chronic radiation-induced fibrosis and soft tissue necrosis", "Randomized trial evidence (Lefaix 1999; Delanian 2003) shows pentoxifylline + vitamin E reduces radiation fibrosis and promotes late radiation tissue injury healing. Mechanism: pentoxifylline reduces TGF-beta-driven fibrosis; vitamin E provides antioxidant protection.", "Prescriber decision; contraindicated with recent MI or hemorrhagic stroke; monitor CBC and renal function; take with food to reduce GI side effects; duration 3-12 months based on response.");
+        add("medium", "Chronic Radiation Wound — Infection Control", "Culture wound before antimicrobial dressings; treat overt infection with targeted antibiotics; non-antimicrobial dressings for clinically uninfected wounds", "Radiation wounds have impaired immune surveillance, making them infection-prone. Culture-guided treatment is essential — colonization alone is not an indication for systemic antibiotics.", "Treat clinical infection (fever, spreading erythema, purulent drainage) — not colonization alone; consult infectious disease for complex cases.");
+        add("low", "Chronic Radiation Wound — NPWT Consideration", "NPWT as adjunct for larger radiation wounds with confirmed granulation tissue — specialist decision only", "NPWT may stimulate granulation in chronic radiation wounds with adequate tissue perfusion. However, application to poorly perfused radiation tissue without specialist assessment risks non-healing.", "Contraindicated over malignant wounds, exposed blood vessels, untreated osteomyelitis; only apply with vascular/wound surgeon assessment confirming adequate perfusion.");
+      }
+
+      add("low", "Radiation Wound — Nutrition Optimization", "Optimize nutrition: protein >=1.5 g/kg/day, vitamin C 500mg BID, zinc 220mg/day (if deficient), vitamin A supplementation for patients on systemic steroids", "Radiation causes systemic nutritional deficits that impair wound healing. High-quality protein provides substrate for collagen synthesis. Vitamin C and zinc are essential cofactors for wound healing enzymes.", "Dietitian consultation recommended; screen albumin, prealbumin, zinc levels; avoid megadosing fat-soluble vitamins beyond stated doses.");
       return finalize(out);
     }
 
@@ -3412,6 +3466,117 @@
       add("low", "Skin Tear — Prevention", "Skin moisturizer BID to surrounding tissue; protective padding on at-risk areas; review equipment for sharp edges", "Skin hydration improves resilience. ISTAP prevention guidelines recommend emollient application, equipment padding, and fall/shear risk reduction.", "Document skin tear history — recurrence risk is high. Consider referral to occupational therapy for environmental modification.");
       return finalize(out);
     }
+    if (c.surgicalWound) {
+      const stageText2 = normalizeText(latest.stage || "");
+      const isDehiscence = c.woundTypeText.includes("dehiscence") || stageText2.includes("dehiscence");
+      const hasInfection = c.effectiveInfectionSigns.length > 0 || c.potentialBioburden;
+      const isFascialEmergency = c.woundTypeText.includes("fascial") || c.woundTypeText.includes("evisceration") || c.woundTypeText.includes("eviscer");
+
+      if (isFascialEmergency) {
+        add("high", "⚠ SURGICAL EMERGENCY — Fascial Dehiscence/Evisceration", "FASCIAL DEHISCENCE OR EVISCERATION: Cover wound with moist sterile dressing and call surgery IMMEDIATELY — this is a surgical emergency requiring operative closure", "Full fascial dehiscence with evisceration has ~10-40% mortality if not promptly returned to OR. Do not attempt to push viscera back manually. Moist sterile dressing prevents bowel desiccation during emergency transfer.", "Do NOT apply pressure; do NOT push contents back; keep patient supine with knees bent; IV access and NPO immediately; call surgical team STAT.");
+      } else if (hasInfection) {
+        add("high", "Surgical Wound — Infected Dehiscence", "Infected surgical wound dehiscence: open wound to level of healthy tissue, culture wound bed, irrigate copiously, pack open — do NOT close over infection", "Closing over an infected surgical wound creates abscess cavity and risks fascial dehiscence or systemic sepsis. The wound must heal from the base. Serial debridement and negative pressure wound therapy (NPWT) are mainstays of treatment for infected sternal and abdominal wounds.", "Consult surgery for any suspected deep space infection (Levenson criteria: fever, wound discharge >5 days post-op, erythema >3 cm from incision); blood cultures if systemic signs present; CT with contrast for suspected abdominal/sternal deep infection.");
+        add("high", "Surgical Wound — Infection Management", "Culture-guided antibiotics: wound and blood cultures before starting antibiotics. Empiric: amoxicillin-clavulanate (superficial), piperacillin-tazobactam or cefazolin + metronidazole (deep/abdominal). Add vancomycin if MRSA risk factors or prior MRSA.", "IDSA guidelines for surgical site infections: superficial SSI — oral antibiotics + wound opening. Deep SSI — IV antibiotics + operative debridement. Organ/space SSI — CT-guided drainage or re-operation.", "De-escalate antibiotics per culture sensitivities; duration guided by infection depth and response; add antifungal (fluconazole) if Candida isolated or immunocompromised patient.");
+        add("medium", "Infected Surgical Wound — NPWT", "Negative pressure wound therapy (NPWT) after initial debridement for deep infected dehiscence — particularly sternal wounds, abdominal wounds", "NPWT reduces bacterial burden, promotes granulation tissue, draws wound edges together, and reduces time to secondary closure or skin grafting. Strongest evidence for sternal dehiscence (DSWI) and large abdominal wall wounds.", "Contraindicated over exposed bowel without protective interface layer; obtain surgery clearance before applying; change dressings every 48-72 hours; seal edges carefully to maintain negative pressure.");
+        add("medium", "Infected Surgical Wound — Debridement", "Sharp debridement of all non-viable tissue at wound opening; remove any suture material acting as nidus of infection", "Retained suture material, mesh, and necrotic tissue maintain biofilm and prevent healing. Serial sharp debridement is required until a clean granulating base is achieved.", "Consult surgery for debridement of any tissue near major vessels or bowel; do not debride near mesh without surgeon guidance — mesh removal may be required for sterilization.");
+      } else {
+        add("high", "Surgical Wound — Sterile Dehiscence", "Sterile dehiscence (no infection): assess depth, irrigate with normal saline, pack with non-adherent moisture-retaining dressing — wound should heal by secondary intention or delayed primary closure", "Sterile wound dehiscence without deep space involvement heals well by secondary intention with moist wound care. Delayed primary closure (suturing at 4-5 days once clean bed is established) is an option for linear dehiscences.", "Rule out deep space infection with CT if any fever, leukocytosis, or discharge beyond day 5 post-op; confirm fascial integrity clinically before deciding on secondary intention vs. delayed closure.");
+        add("medium", "Surgical Wound — Dressing Selection", "Moist non-adherent primary dressing (hydrogel, foam, or silicone contact layer); NPWT if wound is deep or wide with adequate granulation", "Moist wound environment supports re-epithelialization and granulation. NPWT is superior to standard dressings for surgical wounds with significant cavity depth (reduces time to closure and secondary intervention rate).", "Change every 2-3 days for non-NPWT dressings; sooner if saturated; assess for dehiscence propagation or new infection signs at each change.");
+        add("medium", "Surgical Wound — NPWT for Sterile Deep Dehiscence", "NPWT (negative pressure wound therapy) at -75 to -125 mmHg for deep cavity without infection — promotes granulation and reduces time to closure", "Strong RCT evidence for NPWT in surgical wounds: APACHE trial and Cochrane review demonstrate reduced dehiscence area and time to closure vs standard dressings for deep surgical wounds.", "Document wound cavity dimensions; confirm no exposed bowel/vessels before application; consult surgery for large abdominal or sternal wounds.");
+      }
+      add("low", "Surgical Wound — Incisional NPWT (Prophylactic)", "Incisional NPWT (iNPWT) — consider for high-risk closures: obese patients, contaminated fields, re-do procedures, sternotomy", "iNPWT on closed incisions reduces SSI rate and dehiscence in high-risk patients (RCT evidence in cardiac surgery, colorectal, and orthopedic). Applied over closed incision for 5-7 days post-op.", "Surgeon-directed decision at time of closure; most effective when applied in OR immediately post-closure; requires clean closed incision — not for open wounds.");
+      add("low", "Surgical Wound — Nutrition", "Protein >= 1.5 g/kg/day; screen for malnutrition (albumin, prealbumin, BMI); dietitian referral for malnourished patients", "Malnutrition is a primary driver of surgical wound dehiscence and SSI. Adequate protein intake is required for collagen synthesis and immune function.", "Immunonutrition (arginine, omega-3 supplementation) reduces SSI in high-risk surgical patients (ESPEN guidelines); dietitian-directed supplementation preferred over routine supplementation.");
+      return finalize(out);
+    }
+
+    if (c.osteomyelitisWound && !c.radiationWound) {
+      add("high", "⚠ Osteomyelitis — Diagnosis First", "Confirm osteomyelitis diagnosis before committing to a treatment pathway: probe-to-bone test (sensitivity ~60%, specificity ~91% in DFU), MRI (modality of choice: sensitivity 90%, specificity 83%), bone biopsy for culture and histology (GOLD STANDARD)", "Osteomyelitis is often clinically suspected but radiographically underdiagnosed or misdiagnosed. Plain X-ray findings lag bone destruction by 10-21 days and miss early disease. MRI provides the best soft tissue and marrow imaging. Bone biopsy provides pathogen identification for antibiotic targeting — empiric long-course antibiotics without culture guidance leads to treatment failure and resistance.", "Do NOT start antibiotics before bone biopsy if surgery is being planned — pre-biopsy antibiotics suppress culture yield; plain X-ray positive predictive value is low early; MRI may be contraindicated with certain implants.");
+      add("high", "Osteomyelitis — Surgical Consultation", "Orthopedic or vascular surgery consultation for: extent of bone involvement, resection planning, and assessment for revascularization need (especially in DFU with osteomyelitis)", "Surgical debridement of necrotic bone (sequestrectomy) is often required for cure. In diabetic foot osteomyelitis, surgical bone resection achieves remission in >80% of cases vs ~60% with antibiotics alone (meta-analysis). Limb-threatening ischemia with osteomyelitis requires vascular surgery involvement.", "Surgery for osteomyelitis should include: excision of sinus tracts, removal of all sequestra, and obtaining intraoperative cultures. Consider vascularized flap or bone graft for large defects.");
+      add("high", "Osteomyelitis — Antibiotic Therapy", "6 weeks of targeted IV or highly bioavailable oral antibiotics after bone debridement (or 3 months if no surgery). Coverage per bone biopsy culture. Empiric: MSSA — nafcillin or cefazolin; MRSA — vancomycin; gram-negative — ciprofloxacin or ceftriaxone; polymicrobial DFU — piperacillin-tazobactam + vancomycin initially.", "IDSA guidelines recommend 6 weeks of antibiotic therapy post-debridement for hematogenous osteomyelitis; 3 months for contiguous-focus without surgery. Highly bioavailable oral options (fluoroquinolones, rifampin, TMP-SMX) are non-inferior to IV for susceptible organisms in OVIVA trial.", "Infectious disease (ID) consultation essential for antibiotic selection, OPAT planning, and therapy duration; monitor CBC, CMP, inflammatory markers (ESR/CRP) during treatment; rifampin should NEVER be used as monotherapy — always combined.");
+      add("high", "Osteomyelitis — Local Wound Care", "Maintain moist wound environment over bone; non-adherent primary dressing; protect exposed bone from desiccation; no hydrogen peroxide or betadine on exposed bone", "Exposed bone in osteomyelitis must be protected from desiccation while antibiotic therapy and surgical planning proceed. Desiccated bone becomes further necrotic and expands the surgical resection required.", "Saline-moistened non-adherent gauze or hydrogel is appropriate primary cover; change as saturated; if large cavity, NPWT may be used after surgical debridement — consult surgery before applying.");
+      add("medium", "Osteomyelitis — Hyperbaric Oxygen Adjunct", "HBOT as adjunct consideration for chronic refractory osteomyelitis not responding to standard surgical + antibiotic therapy", "HBOT raises tissue oxygen tension in hypoxic infected bone, enhancing osteoclast-mediated sequestrum resorption, antibiotic efficacy, and immune function. Cochrane review and UHMS position statement support use for chronic refractory osteomyelitis.", "HBOT is adjunctive — not a replacement for surgery + antibiotics; 20-40 sessions; requires hyperbaric medicine referral; strongest evidence for chronic Stage III/IV osteomyelitis (Cierny-Mader classification).");
+      add("medium", "Osteomyelitis — Monitoring", "Monitor ESR, CRP, and CBC every 2 weeks during antibiotic therapy; MRI at 6 weeks post-treatment to confirm resolution; watch for relapse signs for 12 months", "ESR normalizes slowly (weeks to months) even with effective treatment — CRP is a better early marker of response. Failure of CRP to decline by week 4 of therapy should trigger reassessment for resistant organism, retained hardware, or sequestrum.", "Sustained ESR/CRP elevation warrants repeat imaging and ID consultation; antibiotic-related complications (renal toxicity with vancomycin, GI effects, C. difficile) must be monitored during prolonged courses.");
+      add("low", "Osteomyelitis — Diabetic Foot Considerations", "In DFU + osteomyelitis: optimize glycemic control (HbA1c target <7% when feasible); off-loading mandatory; vascular assessment for ABI/TBI; consider primary bone resection if toe/forefoot involvement", "Glycemic control is an independent predictor of osteomyelitis resolution. Off-loading is mandatory during treatment to prevent pressure-mediated bone damage. Primary surgical resection for toe/forefoot DFU osteomyelitis achieves high remission rates and avoids prolonged IV antibiotics.", "IWGDF guidelines recommend against antibiotic-alone treatment when surgical debridement is feasible; ensure adequate vascular supply before any bone surgery; consult vascular surgery for ABI < 0.6 or TBI < 0.7 with planned foot surgery.");
+      return finalize(out);
+    }
+
+    if (c.vasculiticUlcer) {
+      add("high", "⚠ Vasculitic Ulcer — Urgent Systemic Workup", "URGENT rheumatology/dermatology referral and systemic workup: punch biopsy of wound edge (not base), ANCA, ANA, anti-dsDNA, complement C3/C4, cryoglobulins, hepatitis B/C serology, RF, anti-CCP, ESR, CRP, CBC with differential, UA with microscopy", "Vasculitic ulcers are the cutaneous manifestation of systemic small/medium vessel inflammation. Untreated vasculitis causes progressive organ damage (renal, pulmonary, neurologic). Wound healing is impossible without treating the underlying disease. Punch biopsy of the active erythematous border (not the ulcer base) is required for direct immunofluorescence and histopathology.", "Do NOT start immunosuppression before biopsy; ANCA+ disease with renal involvement is a rheumatologic emergency — check urinalysis and creatinine immediately; PR3-ANCA (GPA) and MPO-ANCA (MPA/EGPA) guide specific treatment pathways.");
+      add("high", "Vasculitic Ulcer — Immunosuppressive Therapy", "Systemic immunosuppression per specialist direction: systemic corticosteroids (prednisolone 0.5-1 mg/kg/day) as induction in most forms; add cyclophosphamide or rituximab for ANCA+ vasculitis, severe leukocytoclastic vasculitis, or cryoglobulinemic vasculitis", "Wound healing in vasculitis is gated by systemic disease control. Dressings and local wound care are supportive only. RAVE trial (rituximab vs cyclophosphamide for ANCA vasculitis): equivalent remission, superior for relapsing disease. Cochrane review supports rituximab for granulomatosis with polyangiitis.", "Specialist decision for all immunosuppression; screen for infection before starting (TB, hepatitis B, C, HIV); monitor CBC, CMP, urinalysis, ANCA titers during treatment; PJP prophylaxis (TMP-SMX) for cyclophosphamide regimens.");
+      add("high", "Vasculitic Ulcer — NO Compression", "Do NOT apply compression therapy to vasculitic ulcers — compression may worsen ischemic damage in inflamed vessels", "Unlike venous ulcers, vasculitic ulcers have underlying vessel wall inflammation with reduced perfusion. Compression restricts already-compromised flow and can cause critical ischemia.", "Avoid all forms of compression (bandages, stockings, boot therapies) unless explicitly directed by the managing rheumatologist after perfusion assessment.");
+      add("medium", "Vasculitic Ulcer — Local Wound Care", "Conservative wound care: non-adherent moisture-retaining primary dressing; gentle saline irrigation; treat secondary infection only per culture; avoid aggressive debridement until systemic disease is controlled", "Local wound care is supportive while systemic immunosuppressive therapy takes effect. Aggressive debridement of a vasculitic ulcer causes pathergy-like expansion and does not promote healing without systemic disease control.", "Debridement decisions require rheumatology clearance; avoid any wound care that causes significant trauma to wound edges; secondary infection should be confirmed by culture before antibiotic treatment.");
+      add("medium", "Vasculitic Ulcer — Pain Management", "Vasculitic ulcers are disproportionately painful — structured pain management required: topical lidocaine gel at dressing changes; systemic analgesia per pain scale; consider gabapentinoid for neuropathic component", "Pain from vasculitic ulcers is driven by ischemia, inflammation, and nerve involvement. Inadequate pain control impairs patient cooperation with wound care, compromises quality of life, and is an independent marker of disease activity.", "Opioid-sparing multimodal approach preferred; topical EMLA or lidocaine 2-4% gel applied 20-30 min before dressing changes significantly reduces procedural pain; gabapentin or pregabalin for burning/neuropathic quality pain.");
+      add("low", "Vasculitic Ulcer — Biologic Therapy Consideration", "For refractory or relapsing cutaneous vasculitis: rituximab (ANCA+), intravenous immunoglobulin (IVIg) for cryoglobulinemic, dapsone or colchicine for chronic leukocytoclastic vasculitis — specialist-directed", "Multiple biologics and adjunctive immunomodulators have evidence for specific vasculitis subtypes. Rituximab is now preferred over cyclophosphamide for PR3-ANCA vasculitis in most protocols. IVIg is used for severe cryoglobulinemic vasculitis not responding to rituximab + corticosteroids.", "All biologic decisions require rheumatology direction; screen for contraindications before each agent; monitor for infusion reactions and secondary infections.");
+      return finalize(out);
+    }
+
+    if (c.martorell) {
+      add("high", "⚠ Martorell Ulcer (HILU) — Hypertension Control MANDATORY", "Target blood pressure < 130/80 mmHg (lower if tolerated): urgent hypertension intensification is the primary treatment — without BP control, healing is impossible. Refer to internal medicine/cardiology for urgent medication optimization.", "Martorell hypertensive ischemic leg ulcer (HILU) is caused by arteriolar calcification (Monckeberg sclerosis) in the subcutaneous vasculature, leading to ischemic necrosis of the skin. It is exclusively driven by poorly controlled hypertension. BP control is the only disease-modifying intervention available.", "Document current antihypertensives; systolic >140 mmHg predicts non-healing regardless of wound care; target systolic <130 mmHg; add/uptitrate calcium channel blockers, ACE inhibitors, or ARBs with physician collaboration; 24-hour BP monitoring preferred to snapshot readings.");
+      add("high", "Martorell Ulcer — Calcium Channel Blocker", "Calcium channel blocker (CCB: amlodipine, nifedipine extended-release) — first-line addition or uptitration for HILU management, beyond general BP effect", "CCBs have a specific vasodilatory effect on the arteriolar spasm that contributes to HILU ischemia, beyond their antihypertensive properties. Multiple case series demonstrate improved healing rates with CCB-containing antihypertensive regimens in HILU.", "Physician/prescriber decision; check for CCB contraindications (severe aortic stenosis, decompensated heart failure with reduced EF, hypotension); monitor for peripheral edema and flushing; do not use short-acting nifedipine — extended-release only.");
+      add("high", "Martorell Ulcer — Pain Management (Mandatory)", "Pain management is a mandatory part of HILU care — these wounds are among the most painful in wound care: scheduled analgesics (not PRN), topical lidocaine or EMLA before dressing changes, gabapentinoid for neuropathic component", "HILU pain scores frequently exceed 8/10 at rest and 10/10 with dressing changes. Pain drives non-adherence, insomnia, and depression. Inadequate pain management is the most common reason for care failure in HILU. Pain assessment and management must be documented at every visit.", "Topical EMLA or lidocaine 4% gel 20-30 min before dressing changes; scheduled acetaminophen + NSAID (if renal function allows) as base; opioid analgesic for breakthrough as needed; gabapentin/pregabalin starting doses for burning pain; palliative care referral for refractory pain.");
+      add("high", "Martorell Ulcer — NO Compression", "Do NOT apply compression therapy — HILU involves arteriolar ischemia, not venous hypertension; compression worsens ischemic injury", "HILU is caused by arteriolar occlusion and skin ischemia, not venous insufficiency. Compression increases ischemic load in already-compromised tissue and is an absolute contraindication in HILU. This is a critical diagnostic pitfall — HILU may mimic venous ulcers in location (lateral lower leg) but has a completely different pathophysiology.", "Confirm ABI/TBI before any lower extremity wound compression; ABI in HILU may be falsely normal (Monckeberg calcification makes vessels non-compressible); TBI or toe pressure is more reliable; compression is contraindicated with toe pressure < 60 mmHg.");
+      add("medium", "Martorell Ulcer — HBOT Adjunct", "Hyperbaric oxygen therapy referral for HILU that fails to progress despite BP control and standard wound care — typically 20-30 sessions", "HBOT raises tissue oxygen tension in the ischemic subcutaneous tissue of HILU wounds. Case series and retrospective studies (Tawfick 2013, multiple European cohorts) report significant healing improvement with HBOT as adjunct to BP control.", "Requires hyperbaric medicine center referral; contraindications: untreated pneumothorax, certain medications; most effective when initiated after BP control is optimized; confirm with hyperbaric physician on session count and protocol.");
+      add("medium", "Martorell Ulcer — Debridement", "Surgical or sharp debridement of necrotic tissue ONLY after: (1) BP target is achieved or under active intensification, (2) pain is adequately controlled, (3) vascular assessment confirms no critical ischemia", "HILU necrotic tissue requires debridement for wound bed preparation, but premature debridement before hemodynamic stabilization causes progressive necrosis. Pain-controlled surgical debridement under anesthesia may be appropriate for large HILU wounds.", "Do NOT debride HILU wounds with any ischemia (ABI < 0.5, toe pressure < 30 mmHg) without vascular surgery clearance; maggot debridement therapy has limited case series evidence for HILU; consult surgery for large necrotic HILU wounds before debridement.");
+      add("low", "Martorell Ulcer — Local Wound Care", "Moist wound environment: non-adherent primary dressing (silicone contact layer, hydrogel) + absorptive secondary per drainage; protect fragile peri-wound skin; no adhesives directly on wound edges", "HILU wounds heal slowly even with optimal systemic management. Conservative moist wound care prevents desiccation and secondary infection while systemic BP control takes effect (healing may require months).", "Change frequency: every 48-72 hours or per saturation; assess peri-wound skin at every change for new ischemic lesions; document wound measurements and pain scores at each visit; wound should not be expected to change rapidly in early weeks of BP optimization.");
+      return finalize(out);
+    }
+
+    if (c.hidradenitisSuppurativa) {
+      const stage = normalizeText(latest.stage || "");
+      const isHurley1 = stage.includes("hurley stage i") || stage.includes("hurley i") || (stage.includes("stage i") && !stage.includes("ii"));
+      const isHurley2 = stage.includes("hurley stage ii") || stage.includes("hurley ii");
+      const isHurley3 = stage.includes("hurley stage iii") || stage.includes("hurley iii");
+
+      add("high", "Hidradenitis Suppurativa — Dermatology Consultation", "Dermatology (HS specialist if available) consultation for Hurley staging confirmation, biologic therapy assessment, and long-term management planning", "HS is a chronic autoinflammatory disease requiring systemic treatment for Hurley II-III disease. Local wound care alone does not alter disease course. Adalimumab is the only FDA-approved biologic for HS (PIONEER I/II trials). Early specialist involvement reduces tunneling progression and permanent scarring.", "Dermatology should lead systemic therapy decisions; assess for IBD, metabolic syndrome, spondyloarthropathy, and PCOS as HS comorbidities; smoking cessation is a disease-modifying intervention.");
+
+      if (isHurley1) {
+        add("high", "HS Hurley Stage I — Acute Abscess Management", "Acute abscess: intralesional triamcinolone acetonide 10 mg/mL (1-3 mL) for rapid inflammation control — superior to incision for non-fluctuant nodules; fluctuant abscess: I&D with culture", "Intralesional corticosteroid achieves rapid pain control and nodule regression in 48-72 hours. Cochrane review supports intralesional steroids for HS nodules. I&D of fluctuant abscesses provides immediate drainage but does not alter disease course — sinus tracts reform.", "Intralesional steroids should be injected into the inflamed nodule (not the skin surface); maximum 3 mL per session; 10 mg/mL concentration preferred for face/groin; perform I&D only for clearly fluctuant abscesses; send culture for recurrent draining wounds.");
+        add("medium", "HS Hurley Stage I — Topical Antibiotics", "Topical clindamycin 1% solution BID to active areas — first-line topical treatment for mild HS (Hurley I)", "Topical clindamycin reduces surface bacterial load (particularly Staphylococcus aureus and anaerobes) and inflammatory cytokines at HS lesion sites. RCT evidence confirms non-inferiority to oral tetracycline for mild HS.", "Apply to affected skin fold areas BID; avoid occlusion; resistance develops with prolonged use — limit to 3-month courses; do not use as monotherapy for Hurley II-III.");
+        add("low", "HS Hurley Stage I — Lifestyle", "Smoking cessation (reduces flare frequency ~50%), weight reduction (adipokine-driven inflammation), fragrance-free pH-balanced cleanser, loose-fitting clothing over affected areas", "Smoking cessation is the single most impactful lifestyle modification for HS — multiple observational studies show significantly reduced lesion counts in former smokers. Weight loss reduces adipose-driven systemic inflammation. Local skin hygiene reduces secondary bacterial burden.", "Smoking cessation counseling and pharmacotherapy referral; weight management with bariatric surgery referral for BMI > 35 if applicable; these are disease-modifying interventions, not cosmetic recommendations.");
+      } else if (isHurley2) {
+        add("high", "HS Hurley Stage II — Systemic Antibiotic Therapy", "Oral antibiotics for systemic anti-inflammatory effect: tetracycline combination (doxycycline 100mg BID + rifampin 300mg BID x 12 weeks) or clindamycin 300mg BID + rifampin 300mg BID x 12 weeks — FIRST-LINE systemic therapy for Hurley II", "Doxycycline/rifampin and clindamycin/rifampin combinations are the most evidence-supported systemic antibiotic regimens for HS. Mechanism is primarily anti-inflammatory (IL-1/TNF-alpha modulation) rather than purely antimicrobial. 12-week courses achieve sustained remission in ~60-70% of Hurley II patients.", "Rifampin is NEVER used as monotherapy — must always be combined; monitor LFTs at 4 and 8 weeks; doxycycline: take with full glass of water, avoid lying down 30 min after dose, photosensitivity warning; prescriber decision for all systemic antibiotics.");
+        add("high", "HS Hurley Stage II — Biologic Consideration", "Evaluate for adalimumab (Humira) — FDA-approved for moderate-to-severe HS: PIONEER I/II trials demonstrate significant IHS4 response vs placebo. Initiation dose: 160mg SQ, then 80mg at 2 weeks, then 40mg weekly maintenance.", "Adalimumab is the only FDA/EMA-approved biologic for HS. PIONEER trials showed ~58% vs 28% (placebo) HiSCR response at 16 weeks. Anti-TNF-alpha mechanism targets the inflammatory cascade driving HS. Early biologic initiation in Hurley II prevents progression to Hurley III.", "Prescreening required: TB screen (IGRA/PPD), hepatitis B/C, CBC, CMP, ANA; contraindications: active infection, TB, demyelinating disease, CHF; specialist (dermatology/rheumatology) to initiate and monitor; do not use with other biologics simultaneously.");
+        add("medium", "HS Hurley Stage II — Surgical Deroofing", "Limited deroofing of individual sinus tracts under local anesthesia (sinusotomy) — reduces recurrence in individual sinus tracts vs I&D alone", "Deroofing (laying open of sinus tracts) has significantly lower recurrence rates (34%) compared to I&D (100%) for individual HS sinus tracts. Procedure: unroof the sinus tract and curettage the epithelial lining under local anesthesia in office. Heals by secondary intention over 3-6 weeks.", "Dermatology or general surgery with HS experience to perform; send tissue for culture; cover with non-adherent moist dressing post-procedure; systemic therapy should be continued concurrently; document tunnel direction for precise unroofing.");
+      } else if (isHurley3) {
+        add("high", "HS Hurley Stage III — Wide Surgical Excision", "Wide radical excision (skin, subcutaneous tissue, sinus tracts) to uninvolved margins is the only definitive treatment for Hurley III HS — refer to plastic surgery or dermatologic surgery", "Hurley III HS with diffuse interconnected sinus tracts does not respond reliably to medical therapy or limited procedures. Wide radical excision with primary closure or skin grafting achieves 27% recurrence vs >70% for I&D or limited excision. Axillary, inguinal, and perianal regions require tailored excision strategies.", "Preoperative biologic therapy (adalimumab) for 12-16 weeks may reduce inflammation and improve surgical field; reconstruction planning depends on location; post-excision NPWT for open wound management if primary closure not feasible; recurrence monitoring required indefinitely.");
+        add("high", "HS Hurley Stage III — Biologic Pre-/Post-Surgery", "Adalimumab (or secukinumab if available) as systemic therapy adjunct to surgery: continues pre-operatively and restarts 4-6 weeks post-operatively after wound closure is confirmed", "Biologic therapy reduces disease burden and inflammatory load surrounding surgical site, improving operative field and reducing immediate post-operative flare. Post-surgical continuation reduces de novo lesion development at non-operated sites.", "Pause biologic 2-4 weeks pre-surgery if immunosuppression is a concern — discuss with surgeon; restart when wound is closed and without active infection; monitor for post-operative infection closely.");
+        add("medium", "HS Hurley Stage III — Pain and QoL", "Mandatory structured pain management; mental health referral for depression and QoL impact (Dermatology Life Quality Index score at each visit)", "HS Hurley III causes severe chronic pain, social isolation, and unemployment. Depression prevalence is 3-4x general population. Pain management and mental health support are core components of care — not optional additions.", "DLQI > 10 indicates severe QoL impact — trigger mental health referral; structured pain assessment at every visit; peer support groups and patient advocacy resources should be offered.");
+      } else {
+        add("high", "HS — Stage Classification Required", "Select Hurley Stage (I, II, or III) in the Stage field to receive stage-specific treatment guidance", "HS management is entirely stage-driven. Hurley I = topical/local; Hurley II = systemic antibiotics/biologic consideration; Hurley III = surgical referral + biologic. Without staging, only generic guidance can be provided.", "Hurley Stage I: single abscess area, no sinus tracts. Hurley II: recurrent abscesses, one or more sinus tracts, normal skin between lesions. Hurley III: diffuse involvement, multiple sinus tracts, minimal normal skin.");
+      }
+
+      add("medium", "HS — Local Wound Care (All Stages)", "Non-adherent moisture-retaining dressing for draining sinus tracts; gentle saline or chlorhexidine 0.05% irrigation; change per saturation; avoid adhesives on inflamed skin", "HS draining sinuses require containment of drainage and protection of surrounding fragile inflamed skin. Non-adherent dressings prevent wound bed disruption. Chlorhexidine reduces surface bacterial load without significant cytotoxicity at dilute concentrations.", "Avoid packing sinus tracts with tight gauze — this is painful and counterproductive; non-adherent silicone rope/ribbon contact layer into sinus tracts if needed for drainage management; absorptive foam secondary; document drain characteristics and volume.");
+      add("low", "HS — Zinc Gluconate Supplementation", "Zinc gluconate 90mg/day orally for 3-6 months — evidence-supported anti-inflammatory adjunct for HS", "Small RCT (Brocard 2007) and case series show zinc gluconate reduces HS lesion count with anti-inflammatory and anti-androgenic mechanisms. Effect size is modest but additive with other treatments.", "OTC availability; GI side effects (nausea) reduced by taking with food; avoid long-term doses > 40 mg elemental zinc without monitoring; do not use as monotherapy for Hurley II-III.");
+      return finalize(out);
+    }
+
+    if (c.graftWound) {
+      const stageVal = normalizeText(latest.stage || "");
+      const isDonor = stageVal.includes("donor");
+      const isFailedGraft = stageVal.includes("failure") || stageVal.includes("failed");
+      const isIntactGraft = stageVal.includes("intact") && !isFailedGraft;
+
+      if (isDonor) {
+        add("high", "STSG Donor Site — Dressing Selection", "Non-adherent dressing options (ranked by evidence): hydrocolloid > calcium alginate > petrolatum-impregnated gauze. Transparent film (Tegaderm/OpSite) for small, superficial donor sites. First choice per institution availability and exudate level.", "Cochrane meta-analysis of donor site dressings: hydrocolloid and calcium alginate achieve faster healing and better pain scores vs petrolatum gauze. Transparent film allows wound monitoring but may not absorb high initial exudate. Both hydrocolloid and alginate allow less-frequent changes (every 3-7 days).", "Avoid plain dry gauze on donor sites — extremely painful, causes mechanical trauma to healing epithelium, and increases healing time. Silver-impregnated non-adherent dressings for donor sites with infection risk (immunocompromised, contaminated fields). Leave first dressing in place until soaking through or Day 3-5 to protect neoepithelialization.");
+        add("high", "STSG Donor Site — Pain Management", "Pain management is mandatory for donor sites — they are partial-thickness wounds with intact nerve endings and often more painful than the recipient site: topical EMLA or lidocaine gel 20-30 min pre-change, scheduled acetaminophen/NSAID, PRN opioid for first 48-72 hours", "Donor site pain is a major source of post-operative morbidity and patient satisfaction. Pain correlates with healing delay and dressing choice (dry gauze causes worst pain). Proactive pain management significantly reduces opioid use and improves healing.", "Schedule dressing change analgesics as premedication — not PRN; soak dressing with saline for 5 minutes before removal if adhered; topical bupivacaine 0.25% at closure reduces first 24-hour pain; gabapentin for neuropathic/burning pain if persisting > 5 days.");
+        add("medium", "STSG Donor Site — Healing Timeline", "Healing timeline: partial-thickness donor sites typically re-epithelialize in 10-21 days depending on donor thickness. Monitor for: delayed healing > 21 days (suggests wound depth exceeds intended partial thickness), infection (fever, erythema, odor, purulent drainage), and hypertrophic scarring risk", "Split-thickness donor sites heal by re-epithelialization from adnexal structures (hair follicles, sweat glands). Thinner donor sites (0.006-0.012 inch) heal faster with less scarring. Infection is the primary complication delaying healing.", "Change to non-adherent foam at 3-7 days once acute exudate phase passes; begin scar management (silicone gel/sheet) once fully epithelialized; sun protection to epithelialized donor sites for 12 months to prevent dyspigmentation; donor site can be re-harvested after 6-8 weeks.");
+        add("low", "STSG Donor Site — Infection Monitoring", "Screen for infection at each dressing change: increased pain, erythema extending > 2 cm from wound edge, temperature > 38.5C, purulent or malodorous drainage — culture and treat with systemic antibiotics if clinically infected", "Donor site infection occurs in approximately 7-8% of cases. Cellulitis around donor site is the most common presentation. Pseudomonas, Staphylococcus, and mixed flora are the typical pathogens. Infection significantly delays healing and increases scar hypertrophy risk.", "Silver non-adherent dressings (Mepilex Ag, Aquacel Ag) at first sign of heavy colonization; systemic antibiotics for clinical infection (not colonization); wound culture before starting antibiotics; never use hydrogen peroxide or betadine on donor sites.");
+      } else if (isIntactGraft) {
+        add("high", "STSG Recipient — Graft Intact: Immobilization", "Immobilize the grafted area to prevent shear for 5-7 days: bolster dressing or tie-over dressing in areas prone to movement. Absolutely no dependent positioning of grafted extremity for 48-72 hours post-op.", "Graft take depends on plasmatic imbibition (first 24-48 hours) followed by inosculation (capillary connection) at 48-96 hours. Any shear force during these critical phases physically disrupts these connections and causes graft failure. Immobilization is the single most important early post-operative action.", "Bolster (tie-over) dressing: apply foam or cotton bolster and secure with sutures through wound edge to maintain even pressure and prevent seroma/hematoma formation; avoid bulky overlying dressings that shift on movement; place extremity in elevated position.");
+        add("high", "STSG Recipient — Graft Take Assessment", "Assess graft take at first dressing change (Day 3-5 per surgeon protocol): healthy graft — pink/red, non-blanchable, adherent to wound bed. Signs of failure: white/gray color, mobility over wound bed, seroma or hematoma underneath, necrosis.", "Graft take is the primary outcome measure of STSG procedures. Early identification of failure areas allows salvage procedures. Pink/red firmly adherent graft = successful inosculation. Grey/white mobile graft = failure. Sub-graft collections (hematoma/seroma) must be evacuated immediately to re-attempt take.", "Never forcibly remove the first dressing — soak with saline for 10 minutes; note percentage of graft take; partial failures can be re-grafted or managed with skin substitutes; report to surgeon same day if < 70% take or if hematoma/seroma present.");
+        add("medium", "STSG Recipient — Intact Graft Maintenance", "Post-take maintenance (after Day 5): non-adherent moisture-retaining dressing; gentle cleansing; moisturizer to grafted skin after epithelialization; compression garment over 2-4 weeks for high-movement areas", "After successful graft take, the primary goals are moisture maintenance, scar management, and protection from trauma. Early scar management with compression and silicone significantly reduces hypertrophic scarring. Grafted skin has no sebaceous glands and requires external moisturization.", "Begin silicone gel or silicone sheet over healed graft at 3-4 weeks; compression garment (20-30 mmHg) for grafts on extremities; strict sun protection for 12 months (grafted skin is highly susceptible to UV hyperpigmentation); avoid shear and friction for 3-4 weeks post-procedure.");
+      } else if (isFailedGraft) {
+        add("high", "STSG — Failed Graft: Assessment", "Failed graft: urgently assess failure extent (partial vs. total), underlying cause, and wound bed condition. Common causes: hematoma/seroma (evacuate immediately), infection (culture + systemic antibiotics), shear/movement, poor recipient bed vascularity, poor patient nutrition/immune status.", "Failed graft management begins with identifying the cause. Hematoma and seroma are the most preventable causes and can be addressed with evacuation + re-approximation. Infection requires treatment before re-grafting. Poor wound bed vascularity may require vascular consultation.", "Notify surgeon on same day of identified graft failure; do not attempt to re-graft until underlying cause is treated and wound bed is clean and granulating; photograph extent of failure for operative planning; assess nutritional status — albumin < 3.0 g/dL significantly impairs graft take.");
+        add("high", "STSG — Failed Graft: Wound Bed Preparation", "Failed graft wound management: gentle sharp debridement of non-viable graft tissue, normal saline irrigation, non-adherent moisture-retaining primary dressing, NPWT consideration for large failed graft beds to stimulate granulation for re-grafting", "Once failed graft is removed, the wound bed must be prepared to granulating tissue before re-grafting. NPWT accelerates granulation formation and reduces wound contraction (which would worsen the size of area requiring re-grafting). Mean time to re-grafting readiness: 2-3 weeks with NPWT vs 4-6 weeks without.", "NPWT contraindicated over exposed bowel, vessels, or non-vascularized bone; confirm wound bed is free of infection before NPWT; apply with interface layer (non-adherent contact layer) to protect fragile granulation tissue; change every 48-72 hours.");
+        add("medium", "STSG — Failed Graft: Skin Substitutes", "Temporary skin substitute (Integra Bilayer, Biobrane, Mepilex) or allograft as interim coverage while wound bed matures for re-grafting", "Temporary skin substitutes maintain wound moisture, reduce pain, and prevent bacterial invasion while wound bed preparation proceeds. Integra Bilayer on a well-vascularized wound bed creates a neodermis for subsequent thin STSG (improves cosmetic and functional outcome vs. STSG alone).", "Integra Bilayer requires 2-3 weeks for neodermis formation before thin STSG over it; keep Integra moist and free from infection; allograft is an alternative for large temporary coverage; specialist (plastic surgery) to direct skin substitute selection.");
+        add("medium", "STSG — Failed Graft: Nutritional Optimization", "Pre-re-grafting nutrition: protein >= 1.5 g/kg/day, vitamin C 500mg BID, zinc 220mg QD (if deficient); albumin > 3.0 g/dL before re-grafting; dietitian referral if malnourished", "Albumin < 3.0 g/dL is an independent risk factor for graft failure. Malnutrition impairs collagen synthesis, immune function, and angiogenesis — all critical for graft take. Targeted nutritional optimization before re-grafting significantly improves outcomes.", "Check albumin, prealbumin, and zinc before re-grafting; ensure HbA1c < 8% in diabetic patients before re-grafting; delay re-grafting until nutritional parameters are optimized where feasible.");
+      } else {
+        add("high", "Graft Wound — Select Site/Status", "Select graft site and status (Donor Site, Recipient-Intact, Recipient-Partial Failure, or Recipient-Full Failure) in the Stage field to receive specific guidance", "Management differs completely between donor site care, post-take graft maintenance, and failed graft wound bed preparation. Selection enables the appropriate pathway.", "Donor sites re-epithelialize from adnexal structures; recipient sites depend on graft take assessment at Day 3-5; failed grafts require wound bed preparation before re-grafting.");
+        add("medium", "Graft Wound — Universal Care Principles", "All graft wounds: prevent shear and trauma; non-adherent primary dressings; strict infection surveillance; nutrition optimization; pain management", "Universal principles apply regardless of graft site or take status. Shear disrupts graft take and delays donor healing. Infection is the primary complication at both sites. Nutrition drives healing capacity.", "Assess protein intake, albumin, and HbA1c in all graft patients; reinforce movement restrictions; patient education on warning signs of infection and graft failure.");
+      }
+      return finalize(out);
+    }
+
     // ── End special pathway intercepts ────────────────────────────────────
 
     if (!c.tissueBreakdownDocumented) {
@@ -5274,6 +5439,54 @@
       return suggestions;
     }
 
+    /* ── Vasculitic Ulcer ───────────────────────────────────────── */
+    if (c.vasculiticUlcer) {
+      add("L95.9",  "Vasculitis limited to the skin, unspecified");
+      add("L95.8",  "Other vasculitis limited to the skin", "Use for specific named vasculitis with skin ulceration");
+      add("M31.30", "Wegener granulomatosis (GPA), unspecified", "Replace with M31.31 with lung involvement, or M05.xx if RA-associated vasculitis");
+      add("D89.1",  "Cryoglobulinemia", "Add if cryoglobulinemic vasculitis confirmed");
+      add("L98.499","Non-pressure chronic ulcer, unspecified severity", "Use as primary wound code alongside vasculitis code");
+      return suggestions;
+    }
+
+    /* ── Martorell Ulcer (HILU) ──────────────────────────────── */
+    if (c.martorell) {
+      add("I10",    "Essential (primary) hypertension", "Primary driver of Martorell / HILU; document hypertension explicitly");
+      add("L97.899","Non-pressure chronic ulcer of other part of lower leg, unspecified severity", "For lateral leg HILU ulcer; adjust laterality and site as appropriate");
+      add("I77.1",  "Stricture of artery", "Use for arteriolar calcification/occlusion driving ischemia");
+      add("M61.50", "Ossification and calcification of muscle, unspecified", "Consider for Monckeberg medial calcific sclerosis component");
+      return suggestions;
+    }
+
+    /* ── Hidradenitis Suppurativa ────────────────────────────── */
+    if (c.hidradenitisSuppurativa) {
+      add("L73.2",  "Hidradenitis suppurativa");
+      if (c.stageText.includes("hurley stage i") || c.stageText.includes("hurley i")) {
+        add("L73.2", "HS, Hurley Stage I", "Same code L73.2 — stage documented in clinical notes");
+      }
+      add("L02.90", "Cutaneous abscess, unspecified", "Add when acute abscess is present alongside chronic HS");
+      add("L08.1",  "Erythrasma", "Distinguish from HS in intertriginous areas; HS is the primary code");
+      add("Z87.39", "Personal history of other musculoskeletal disorders", "Add if prior surgical excisions documented");
+      return suggestions;
+    }
+
+    /* ── Graft Wound ─────────────────────────────────────────── */
+    if (c.graftWound) {
+      const isDonorSite = c.woundTypeText.includes("donor");
+      const isGraftFailure = c.woundTypeText.includes("failure") || c.stageText.includes("failure") || c.stageText.includes("failed");
+      if (isDonorSite) {
+        add("T79.8XXA","Other early complications of trauma — donor site, initial encounter", "Use with W-X cause code if trauma origin");
+        add("L98.419", "Non-pressure chronic ulcer of skin not elsewhere classified, unspecified severity", "For non-healing donor site wound");
+      } else if (isGraftFailure) {
+        add("T86.821", "Failure of skin graft", "Primary code for failed STSG/FTSG");
+        add("T86.828", "Other complications of skin graft", "Use for partial failure or infection of graft");
+      } else {
+        add("Z48.817","Encounter for surgical aftercare following surgery on the skin and subcutaneous tissue", "Routine post-graft follow-up");
+        add("T86.820","Skin graft (partial/full) — unspecified complication", "If complication NOS");
+      }
+      return suggestions;
+    }
+
     /* ── Osteomyelitis (standalone) ──────────────────────────── */
     if (c.osteomyelitisSignal) {
       const omSite =
@@ -5292,10 +5505,15 @@
     }
 
     /* ── Surgical Wound ──────────────────────────────────────── */
-    if (c.woundTypeText.includes("surgical")) {
-      add("T81.31XA", "Disruption of external operation wound NEC, initial encounter");
-      add("T81.41XA", "Infection following a procedure (abscess/cellulitis), initial encounter");
+    if (c.surgicalWound) {
+      add("T81.31XA", "Disruption of external operation (wound dehiscence), initial encounter");
+      add("T81.32XA", "Disruption of internal operation wound NEC, initial encounter", "Use if deep fascia/internal layer involved");
+      add("T81.41XA", "Infection following a procedure, initial encounter");
+      add("T81.42XA", "Infection following a procedure — deep incisional SSI, initial encounter");
       add("T81.49XA", "Other infection following procedure, initial encounter");
+      if (c.woundTypeText.includes("sternal") || c.locationText.includes("sternum") || c.locationText.includes("chest")) {
+        add("T81.31XA", "Sternal wound dehiscence — also see J98.19 or specific procedural complication codes");
+      }
       return suggestions;
     }
 
@@ -5357,6 +5575,91 @@
       return suggestions;
     }
 
+    /* ── Surgical Wound / Dehiscence ──────────────────── */
+    if (c.surgicalWound) {
+      add("97597", "Active wound care management, selective debridement; first 20 sq cm");
+      add("97598", "Active wound care management, selective debridement; each additional 20 sq cm");
+      add("13160", "Secondary closure of surgical wound or dehiscence", "For delayed primary closure or secondary closure of dehisced incision");
+      if (depth >= 1.0 || c.cavityLikely) {
+        add("97605", "NPWT dressing change ≤ 50 sq cm", "For deep surgical wound dehiscence with cavity");
+        add("97606", "NPWT dressing change > 50 sq cm");
+      }
+      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit");
+      return suggestions;
+    }
+
+    /* ── Osteomyelitis ─────────────────────────────────── */
+    if (c.osteomyelitisWound && !c.pressureRelated && !c.diabeticFootRelated) {
+      add("11044", "Debridement, bone; first 20 sq cm", "For bone debridement/sequestrectomy");
+      add("11047", "Debridement, bone; each additional 20 sq cm");
+      add("20220", "Biopsy, bone, trocar or needle; superficial", "For diagnostic bone biopsy; 20225 for deep");
+      add("20245", "Biopsy, bone, open; deep", "When trocar/needle biopsy not possible or inconclusive");
+      add("97605", "NPWT dressing change ≤ 50 sq cm", "For post-debridement wound management");
+      add("99213", "Office/outpatient E&M, low-moderate complexity");
+      return suggestions;
+    }
+
+    /* ── Vasculitic Ulcer ──────────────────────────────── */
+    if (c.vasculiticUlcer) {
+      add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Only after specialist approves debridement");
+      add("97602", "Non-selective wound debridement, per session", "Autolytic/enzymatic — conservative approach preferred");
+      add("11100", "Biopsy of skin, subcutaneous tissue; single lesion", "Punch biopsy of wound edge for histopathology and DIF");
+      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; primary billing should reflect rheumatology/dermatology management");
+      return suggestions;
+    }
+
+    /* ── Martorell Ulcer (HILU) ────────────────────────── */
+    if (c.martorell) {
+      add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Only after BP control established and pain adequately managed");
+      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; hypertension management billed separately");
+      if (c.radiationWound || depth >= 0.5) {
+        add("99183", "Physician supervision of hyperbaric oxygen therapy, per session");
+        add("G0277", "HBOT, full body; 30 minutes");
+      }
+      return suggestions;
+    }
+
+    /* ── Hidradenitis Suppurativa ───────────────────────── */
+    if (c.hidradenitisSuppurativa) {
+      const stage = c.stageText;
+      if (stage.includes("hurley stage ii") || stage.includes("hurley ii") || stage.includes("hurley stage iii") || stage.includes("hurley iii")) {
+        add("10060", "Incision and drainage of abscess; simple/single", "For acute abscess I&D (Hurley I-II)");
+        add("10061", "Incision and drainage of abscess; complicated/multiple", "Multiple or complicated abscesses");
+        add("11450", "Excision of skin and subcutaneous tissue for hidradenitis, axillary; with simple or intermediate closure", "Stage II-III deroofing or excision");
+        add("11451", "Excision for hidradenitis, axillary; requiring complex closure", "Stage III wide excision");
+        add("11462", "Excision for hidradenitis, inguinal; with simple or intermediate closure");
+        add("11463", "Excision for hidradenitis, inguinal; requiring complex closure");
+      } else {
+        add("10060", "Incision and drainage of abscess; simple/single", "For acute abscess I&D (Hurley I)");
+        add("11900", "Injection, intralesional; up to 7 lesions", "For intralesional triamcinolone");
+      }
+      add("97602", "Non-selective debridement, per session", "For draining sinus tracts wound care");
+      add("99213", "Office/outpatient E&M, low-moderate complexity");
+      return suggestions;
+    }
+
+    /* ── Graft Wound ───────────────────────────────────── */
+    if (c.graftWound) {
+      const stageVal = c.stageText;
+      const isDonor = stageVal.includes("donor");
+      const isFailed = stageVal.includes("failure") || stageVal.includes("failed");
+      if (isDonor) {
+        add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Donor site wound management");
+        add("99213", "Office/outpatient E&M, low-moderate complexity", "Donor site follow-up visit");
+      } else if (isFailed) {
+        add("15100", "Split-thickness autograft, trunk/arms/legs; first 100 sq cm or 1% TBSA in children", "Re-grafting procedure");
+        add("15101", "Split-thickness autograft; each additional 100 sq cm");
+        add("97605", "NPWT dressing change ≤ 50 sq cm", "For wound bed preparation pre-re-grafting");
+        add("97606", "NPWT dressing change > 50 sq cm");
+        add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Failed graft debridement");
+      } else {
+        add("15002", "Surgical preparation/creation of recipient site; trunk/arms/legs first 100 sq cm", "Use for recipient site wound bed prep if needed");
+        add("15100", "Split-thickness autograft, trunk/arms/legs; first 100 sq cm", "Initial grafting procedure");
+        add("99213", "Office/outpatient E&M, low-moderate complexity", "Post-graft follow-up");
+      }
+      return suggestions;
+    }
+
     /* ── Debridement — depth-tiered ────────────────────── */
     if (needsDebride) {
       const stageText = c.stageText;
@@ -5408,7 +5711,7 @@
     }
 
     /* ── HBOT ──────────────────────────────────────────── */
-    if (c.radiationWound || (c.diabeticFootRelated && c.osteomyelitisSignal)) {
+    if (c.radiationWound || c.martorell || (c.diabeticFootRelated && c.osteomyelitisSignal) || (c.osteomyelitisWound && c.chronic)) {
       add("99183", "Physician or other QHP supervision of hyperbaric oxygen therapy, per session");
       add("G0277", "HBOT, pressure, full body; 30 minutes", "Facility code; 99183 is professional component");
     }
@@ -6309,6 +6612,21 @@
     { value: "calcified", label: "Non-compressible (calcified)" },
   ];
 
+  const MANUAL_HS_HURLEY_OPTIONS = [
+    { value: "", label: "Not documented" },
+    { value: "Hurley Stage I", label: "Hurley Stage I — Single abscess, no sinus tracts" },
+    { value: "Hurley Stage II", label: "Hurley Stage II — Recurrent abscesses, sinus tracts" },
+    { value: "Hurley Stage III", label: "Hurley Stage III — Diffuse involvement, interconnected tracts" },
+  ];
+
+  const MANUAL_GRAFT_SITE_OPTIONS = [
+    { value: "", label: "Not documented" },
+    { value: "Donor site", label: "Donor Site" },
+    { value: "Recipient site — graft intact", label: "Recipient Site — Graft Intact" },
+    { value: "Recipient site — partial graft failure", label: "Recipient Site — Partial Graft Failure" },
+    { value: "Recipient site — full graft failure", label: "Recipient Site — Full Graft Failure" },
+  ];
+
   const MANUAL_WOUND_TYPE_OPTIONS = [
     { value: "", label: "Select wound type" },
     { value: "Pressure injury", label: "Pressure Injury" },
@@ -6318,9 +6636,9 @@
     { value: "Mixed arterial venous ulcer", label: "Mixed Arterial-Venous Ulcer" },
     { value: "Neuropathic ulcer", label: "Neuropathic Ulcer" },
     { value: "Burn", label: "Burn" },
-    { value: "Radiation Burn", label: "Radiation Burn" },
+    { value: "Radiation wound", label: "Radiation Wound / Radiation Burn" },
     { value: "Skin tear", label: "Skin Tear" },
-    { value: "Surgical wound", label: "Surgical Wound" },
+    { value: "Surgical wound", label: "Surgical Wound / Dehiscence" },
     { value: "Traumatic wound", label: "Traumatic Wound" },
     { value: "Moisture associated skin damage", label: "Moisture-Associated Skin Damage" },
     { value: "Malignant wound", label: "Malignant / Fungating Wound" },
@@ -6328,42 +6646,48 @@
     { value: "Calciphylaxis", label: "Calciphylaxis" },
     { value: "Osteomyelitis", label: "Osteomyelitis / Exposed Bone" },
     { value: "Fistula", label: "Fistula / Enterocutaneous" },
+    { value: "Vasculitic ulcer", label: "Vasculitic Ulcer" },
+    { value: "Martorell ulcer", label: "Martorell Ulcer (Hypertensive Ischemic)" },
+    { value: "Hidradenitis suppurativa", label: "Hidradenitis Suppurativa" },
+    { value: "Graft wound", label: "Graft Wound (STSG / Donor Site)" },
+    { value: "Pyoderma gangrenosum", label: "Pyoderma Gangrenosum" },
     { value: "Other wound", label: "Other" },
   ];
 
   function getWoundFieldConfig(woundType) {
     const t = normalizeText(woundType);
     const isSkinTear   = t.includes("skin tear");
-    const isBurn       = t.includes("burn");
     const isMasd       = t.includes("masd") || t.includes("moisture") || t.includes("iad");
     const isNF         = t.includes("necrotizing") || t.includes("fournier") || t.includes("gas gangrene");
     const isCalciph    = t.includes("calciphylaxis");
-    const isSurgical   = t.includes("surgical");
+    const isHS         = t.includes("hidradenitis");
+    const isGraft      = t.includes("graft");
     const isVenous     = t.includes("venous") || t.includes("stasis");
     const isArterial   = t.includes("arterial") || t.includes("ischemic");
     const isDFU        = t.includes("diabetic") || t.includes("neuropathic");
-    const showAbi      = isVenous || isArterial || isDFU || t.includes("mixed");
+    const isMixed      = t.includes("mixed");
+    const isMartorell  = t.includes("martorell");
+    const showAbi      = isVenous || isArterial || isDFU || isMixed || isMartorell;
 
     const isFistula    = t.includes("fistula") || t.includes("ecf");
-    const isTraumatic  = t.includes("traumatic") || t.includes("lacerat");
 
-    // Tissue %: not relevant for skin tears, MASD, NF (emergency), calciphylaxis, fistula
-    const tissuePctDisabled = isSkinTear || isMasd || isNF || isCalciph || isFistula;
+    // Tissue % not meaningful for: skin tears, MASD, NF, calciphylaxis, fistula, HS (nodular), graft donor site
+    const tissuePctDisabled = isSkinTear || isMasd || isNF || isCalciph || isFistula || isHS;
 
-    // Depth: not relevant for skin tears (superficial), MASD
+    // Depth not meaningful for: skin tears (superficial by definition), MASD
     const depthDisabled = isSkinTear || isMasd;
 
-    // Exposed structures: not relevant for skin tears, MASD, superficial burns
+    // Exposed structures not applicable for: skin tears, MASD
     const exposedDisabled = isSkinTear || isMasd;
 
-    // Infection signs: always relevant (keep enabled)
+    // Infection signs: always relevant
     const infectionDisabled = false;
 
-    // Cavity/tunneling/undermining: not for skin tears or MASD
+    // Tunneling/undermining: not for skin tears, MASD, or HS (sinus tracts are captured via stage)
     const tunnelDisabled = isSkinTear || isMasd;
 
-    // ABI: show for leg-ulcer types, hide for others
-    const abiVisible = showAbi || !t; // show when leg ulcer type or no type selected
+    // ABI: relevant only for leg-ulcer types
+    const abiDisabled = !showAbi && Boolean(t);
 
     return {
       tissuePctDisabled,
@@ -6371,7 +6695,7 @@
       exposedDisabled,
       infectionDisabled,
       tunnelDisabled,
-      abiHint: !abiVisible ? "Not typically required for this wound type" : "",
+      abiDisabled,
     };
   }
 
@@ -6425,18 +6749,8 @@
       });
     }
 
-    // ABI label hint
-    const abiWrapper = card.querySelector(`[data-field="abi_range"]`)?.closest(".manual-field");
-    if (abiWrapper) {
-      const notNeeded = cfg.abiHint;
-      let hintEl = abiWrapper.querySelector(".field-type-hint");
-      if (notNeeded) {
-        if (!hintEl) { hintEl = document.createElement("span"); hintEl.className = "field-type-hint"; abiWrapper.appendChild(hintEl); }
-        hintEl.textContent = notNeeded;
-      } else if (hintEl) {
-        hintEl.remove();
-      }
-    }
+    // ABI: disable visually for non-leg wound types
+    setFieldDisabled("abi_range", cfg.abiDisabled);
   }
 
   function burnClassificationFromStage(stage) {
@@ -6462,6 +6776,8 @@
     if (text.includes("burn") || text.includes("radiation")) return "burn";
     if (text.includes("pressure")) return "pressure";
     if (text.includes("skin tear")) return "skin_tear";
+    if (text.includes("hidradenitis") || text.includes("hs")) return "hs";
+    if (text.includes("graft")) return "graft";
     return "none";
   }
 
@@ -6470,6 +6786,8 @@
     if (mode === "burn") return { mode, label: "Burn Classification", options: MANUAL_BURN_STAGE_OPTIONS, disabled: false };
     if (mode === "pressure") return { mode, label: "Pressure Stage", options: MANUAL_STAGE_OPTIONS, disabled: false };
     if (mode === "skin_tear") return { mode, label: "ISTAP Classification", options: MANUAL_ISTAP_OPTIONS, disabled: false };
+    if (mode === "hs") return { mode, label: "Hurley Stage", options: MANUAL_HS_HURLEY_OPTIONS, disabled: false };
+    if (mode === "graft") return { mode, label: "Graft Site / Status", options: MANUAL_GRAFT_SITE_OPTIONS, disabled: false };
     return { mode, label: "Stage", options: MANUAL_STAGE_NOT_APPLICABLE_OPTIONS, disabled: true };
   }
 

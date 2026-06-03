@@ -655,6 +655,24 @@ th {
   margin: 3px 0 0;
 }
 
+.manual-field.is-disabled,
+.manual-check-section.is-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.manual-field.is-disabled input,
+.manual-field.is-disabled select,
+.manual-field.is-disabled textarea {
+  background: #f0ece9;
+  color: #9b8a85;
+  border-color: #d4cac6;
+}
+
+.field-type-hint {
+  display: none;
+}
+
 .manual-prior {
   margin-top: 10px;
   border-top: 1px solid rgba(107, 31, 42, 0.14);
