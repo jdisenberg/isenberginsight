@@ -276,7 +276,6 @@
     sourceMapBody: document.querySelector("#sourceMapTable tbody"),
     printPacketPanel: document.getElementById("printPacketPanel"),
     printPacketContent: document.getElementById("printPacketContent"),
-    backToTopButton: document.getElementById("backToTopButton"),
   };
 
   let latestOutputs = null;
@@ -7573,12 +7572,6 @@
       await loadRemoteAuditLog();
     };
 
-    const updateBackToTopVisibility = () => {
-      if (!els.backToTopButton) return;
-      const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
-      els.backToTopButton.classList.toggle("is-visible", scrollY > 260);
-    };
-
     if (els.settingsButton) {
       els.settingsButton.addEventListener("click", (e) => {
         e.preventDefault();
@@ -7780,15 +7773,7 @@
         openPrintPacket();
       });
     }
-    if (els.backToTopButton) {
-      els.backToTopButton.addEventListener("click", () => {
-        const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
-      });
-    }
-    window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
     window.addEventListener("afterprint", exitPrintPacketMode);
-    updateBackToTopVisibility();
 
     els.analyzeForm.addEventListener("submit", analyzeReport);
 

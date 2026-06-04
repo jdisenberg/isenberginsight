@@ -115,35 +115,6 @@ header p {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.back-to-top {
-  position: fixed;
-  right: 16px;
-  bottom: 20px;
-  z-index: 1200;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: #6b1f2a;
-  color: #ffffff;
-  border-radius: 999px;
-  padding: 10px 14px;
-  font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  box-shadow: 0 3px 0 #4a1520, 0 6px 14px rgba(74, 21, 32, 0.22);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateY(10px);
-  transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
-}
-
-.back-to-top.is-visible {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-
-
 .hint {
   color: var(--ink-soft);
   margin: 0;
@@ -767,12 +738,6 @@ th {
     height: 56px;
   }
 
-  .back-to-top {
-    right: 12px;
-    bottom: 14px;
-    padding: 9px 12px;
-  }
-
   header h1 {
     font-size: 1.75rem;
   }
@@ -977,10 +942,6 @@ th {
   @media (max-width: 800px) {
     .app {
       padding-bottom: max(34px, env(safe-area-inset-bottom));
-    }
-
-    .back-to-top {
-      bottom: max(14px, env(safe-area-inset-bottom));
     }
   }
 }
@@ -1292,10 +1253,6 @@ th {
   line-height: 1.35;
 }
 
-body.print-packet-mode .back-to-top {
-  display: none !important;
-}
-
 body.print-packet-mode main > section,
 body.print-packet-mode main > header {
   display: none !important;
@@ -1317,10 +1274,6 @@ body.print-packet-mode #printPacketContent {
   .app {
     max-width: none;
     padding: 0;
-  }
-
-  .back-to-top {
-    display: none !important;
   }
 }
 
@@ -1423,10 +1376,6 @@ body.print-packet-mode #printPacketContent {
 /* ── Name Gate & Terms Dialog ─────────────────────────── */
 body.name-gate-active {
   overflow: hidden;
-}
-
-body.name-gate-active .back-to-top {
-  display: none !important;
 }
 
 .name-gate-overlay {
