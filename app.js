@@ -936,7 +936,16 @@
   /** On load: try to resume a stored session; otherwise lock to the login view. */
   async function initializeAuth() {
     if (!els.nameGateOverlay || !els.authLoginForm) {
-      /* Auth UI missing — fail open so the app is still usable */
+      setAppAccessLocked(false);
+      return true;
+    }
+
+    /* Skip auth gate on localhost and Cloudflare preview deployments */
+    const host = window.location.hostname;
+    const isPreview = host === "localhost" || host === "127.0.0.1" ||
+      /^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+\.isenberginsight\.pages\.dev$/.test(host);
+    if (isPreview) {
+      authState = { username: "preview", token: "", role: "admin", email: "" };
       setAppAccessLocked(false);
       return true;
     }
