@@ -1998,6 +1998,9 @@ body.name-gate-active {
 
 /* ── CMS Coverage Guide ─────────────────────────────────────────────────── */
 
+.cms-guide-panel { margin: 0 0 12px; }
+.cms-guide-panel .cms-guide-section:first-child { margin-top: 0; }
+
 .cms-guide-section {
   margin-top: 14px;
   border: 1.5px solid #b5c4d0;

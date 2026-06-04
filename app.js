@@ -7934,34 +7934,14 @@
     return patientBlocks.join("");
   }
 
-  /* CMS Coverage & Documentation Guide — rendered in its own panel above the
-     Chart Narrative (not embedded in the narrative text). */
+  /* CMS Coverage Guide — just the blue collapsible box(es), no panel chrome,
+     rendered above the Chart Narrative. */
   function buildCMSGuidePanel(rows) {
     if (!rows || !rows.length) return "";
-
-    const patientGroups = new Map();
-    for (const row of rows) {
-      const patientName = normalizePersonName(String(row.name || "Unknown patient").trim()) || "Unknown patient";
-      const patientMrn = String(row.mrn || "").trim();
-      const patientKey = `${patientName}|${patientMrn}`;
-      if (!patientGroups.has(patientKey)) patientGroups.set(patientKey, { patientName, wounds: [] });
-      patientGroups.get(patientKey).wounds.push(row);
-    }
-
-    return Array.from(patientGroups.values()).map((patient) => {
-      const guideBlocks = patient.wounds
-        .map((row) => renderCMSGuideHtml(row))
-        .filter(Boolean)
-        .join("");
-      if (!guideBlocks) return "";
-      return `
-        <section class="narrative-patient">
-          <div class="narrative-patient-header">
-            <strong>${escapeHtml(patient.patientName)}</strong>
-          </div>
-          ${guideBlocks}
-        </section>`;
-    }).filter(Boolean).join("");
+    return rows
+      .map((row) => renderCMSGuideHtml(row))
+      .filter(Boolean)
+      .join("");
   }
 
   function defaultHistory() {
