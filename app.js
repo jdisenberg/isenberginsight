@@ -745,6 +745,382 @@
     return "Ready. Enter wound details, then click Generate Considerations.";
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     Wound Photo Analyzer
+     ═══════════════════════════════════════════════════════════ */
+  function initWoundAnalyzer() {
+    let activeCard  = null;
+    let photo       = null;   /* HTMLImageElement */
+    let photoW = 0, photoH = 0;
+    let canvW  = 0, canvH  = 0;
+    let imgScale = 1;         /* canvas px per photo px */
+    let step = 1;             /* 1=photo 2=ruler 3=wound 4=results */
+
+    let rulerPts  = [];       /* [{ix,iy}] image coords, max 2 */
+    let pxPerCm   = null;
+    let woundPts  = [];       /* [{ix,iy}] image coords, max 2 */
+    let results   = null;     /* {pct, lCm, wCm, areaCm} */
+
+    /* ── element helpers ── */
+    const $  = (id) => document.getElementById(id);
+    const cvs = () => $("analyzerCanvas");
+
+    /* ── open / close ── */
+    function open(card) {
+      activeCard = card;
+      reset();
+      const m = $("woundAnalyzerModal");
+      if (m) { m.hidden = false; document.body.style.overflow = "hidden"; }
+      setStep(1);
+    }
+
+    function close() {
+      const m = $("woundAnalyzerModal");
+      if (m) m.hidden = true;
+      document.body.style.overflow = "";
+      activeCard = null;
+    }
+
+    function reset() {
+      photo = null; photoW = photoH = 0; canvW = canvH = 0; imgScale = 1;
+      rulerPts = []; pxPerCm = null; woundPts = []; results = null;
+      const inp = $("analyzerPhotoInput"); if (inp) inp.value = "";
+      const cm  = $("analyzerRulerCm");   if (cm)  cm.value  = "";
+      const c = cvs();
+      if (c) { const ctx = c.getContext("2d"); ctx.clearRect(0, 0, c.width, c.height); }
+    }
+
+    /* ── step management ── */
+    function setStep(n) {
+      step = n;
+      /* section visibility */
+      const sections = { 1:"azPhotoSection", 2:"azCalibSection", 3:"azWoundSection", 4:"azResultsSection" };
+      Object.entries(sections).forEach(([s, id]) => { const el = $(id); if (el) el.hidden = Number(s) !== n; });
+      const wrap = $("azCanvasWrap"); if (wrap) wrap.hidden = n < 2;
+
+      /* step dots */
+      document.querySelectorAll(".az-step-dot").forEach((el) => {
+        const s = Number(el.dataset.step);
+        el.classList.toggle("az-step-active", s === n);
+        el.classList.toggle("az-step-done",   s < n);
+      });
+
+      /* nav buttons */
+      const nb = $("analyzerNextBtn"); const bb = $("analyzerBackBtn"); const ab = $("analyzerApplyBtn");
+      if (bb) bb.hidden = n === 1;
+      if (nb) {
+        nb.hidden = n === 4;
+        nb.textContent = n === 3 ? "Analyze →" : "Next →";
+        nb.disabled = (n === 1 && !photo) || (n === 3 && woundPts.length < 2);
+      }
+      if (ab) ab.hidden = n !== 4;
+
+      if (photo && n >= 2) drawCanvas();
+    }
+
+    /* ── canvas ── */
+    function setupCanvas() {
+      const c = cvs(); if (!c || !photo) return;
+      const wrap = $("azCanvasWrap");
+      const dispW = Math.min((wrap ? wrap.clientWidth : 480) || 480, 720);
+      const dispH = Math.round(dispW * photoH / photoW);
+      c.width = canvW = dispW; c.height = canvH = dispH;
+      imgScale = dispW / photoW;
+      drawCanvas();
+    }
+
+    function toCanvas(pt) { return { x: pt.ix * imgScale, y: pt.iy * imgScale }; }
+
+    function drawCanvas() {
+      const c = cvs(); if (!c || !photo) return;
+      const ctx = c.getContext("2d");
+      ctx.clearRect(0, 0, canvW, canvH);
+      ctx.drawImage(photo, 0, 0, canvW, canvH);
+
+      /* ruler overlay — cyan */
+      if (rulerPts.length) {
+        ctx.save();
+        ctx.strokeStyle = "#00e5ff"; ctx.fillStyle = "#00e5ff"; ctx.lineWidth = 2;
+        rulerPts.forEach((p) => {
+          const cp = toCanvas(p);
+          ctx.beginPath(); ctx.arc(cp.x, cp.y, 6, 0, Math.PI * 2); ctx.fill();
+        });
+        if (rulerPts.length === 2) {
+          const a = toCanvas(rulerPts[0]); const b = toCanvas(rulerPts[1]);
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          /* show px distance */
+          ctx.fillStyle = "#00e5ff"; ctx.font = "bold 12px system-ui"; ctx.textAlign = "center";
+          const cmVal = parseFloat($("analyzerRulerCm")?.value || "0");
+          const label = cmVal > 0 ? `${cmVal} cm` : `${Math.round(pxDist(rulerPts[0], rulerPts[1]))} px`;
+          ctx.fillText(label, (a.x + b.x) / 2, Math.min(a.y, b.y) - 8);
+        }
+        ctx.restore();
+      }
+
+      /* wound rect overlay — yellow */
+      if (woundPts.length) {
+        ctx.save();
+        ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2.5;
+        const a = toCanvas(woundPts[0]);
+        if (woundPts.length === 1) {
+          ctx.fillStyle = "#ffeb3b";
+          ctx.beginPath(); ctx.arc(a.x, a.y, 7, 0, Math.PI * 2); ctx.fill();
+        } else {
+          const b = toCanvas(woundPts[1]);
+          const rx = Math.min(a.x, b.x); const ry = Math.min(a.y, b.y);
+          const rw = Math.abs(b.x - a.x);  const rh = Math.abs(b.y - a.y);
+          ctx.fillStyle = "rgba(255,235,59,0.14)";
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeRect(rx, ry, rw, rh);
+          if (pxPerCm) {
+            ctx.fillStyle = "#ffeb3b"; ctx.font = "bold 13px system-ui"; ctx.textAlign = "center";
+            const lCm = (Math.max(rw, rh) / imgScale / pxPerCm).toFixed(1);
+            const wCm = (Math.min(rw, rh) / imgScale / pxPerCm).toFixed(1);
+            ctx.fillText(lCm + " cm", rx + rw / 2, ry - 7);
+            ctx.save(); ctx.translate(rx + rw + 16, ry + rh / 2);
+            ctx.rotate(Math.PI / 2); ctx.fillText(wCm + " cm", 0, 0); ctx.restore();
+          }
+        }
+        ctx.restore();
+      }
+    }
+
+    function pxDist(a, b) {
+      return Math.sqrt((b.ix - a.ix) ** 2 + (b.iy - a.iy) ** 2);
+    }
+
+    /* ── canvas tap ── */
+    function onCanvasTap(evt) {
+      if (!photo) return;
+      evt.preventDefault();
+      const c = cvs(); if (!c) return;
+      const rect = c.getBoundingClientRect();
+      const cssScaleX = canvW / rect.width;
+      const cssScaleY = canvH / rect.height;
+      const src = evt.touches ? evt.touches[0] : evt;
+      const cx = (src.clientX - rect.left) * cssScaleX;
+      const cy = (src.clientY - rect.top)  * cssScaleY;
+      const pt = { ix: cx / imgScale, iy: cy / imgScale };
+
+      if (step === 2) {
+        rulerPts = rulerPts.length < 2 ? [...rulerPts, pt] : [pt];
+        updateRulerHint();
+      } else if (step === 3) {
+        woundPts = woundPts.length < 2 ? [...woundPts, pt] : [pt];
+        updateWoundHint();
+      }
+      drawCanvas();
+      const nb = $("analyzerNextBtn");
+      if (nb) nb.disabled = (step === 3 && woundPts.length < 2);
+    }
+
+    function updateRulerHint() {
+      const h = $("analyzerRulerHint"); if (!h) return;
+      if (!rulerPts.length)      h.textContent = "Tap the first point on the ruler.";
+      else if (rulerPts.length === 1) h.textContent = "Tap the second point on the ruler.";
+      else {
+        const cm = parseFloat($("analyzerRulerCm")?.value || "0");
+        h.textContent = cm > 0 ? `${cm} cm span set — tap to reposition.` : "Now enter the distance between those two points below.";
+      }
+    }
+
+    function updateWoundHint() {
+      const h = $("analyzerWoundHint"); if (!h) return;
+      if (!woundPts.length)      h.textContent = "Tap the first corner of the wound area.";
+      else if (woundPts.length === 1) h.textContent = "Tap the opposite corner of the wound area.";
+      else h.textContent = "Rectangle set — tap to reposition, or click Analyze.";
+    }
+
+    /* ── color analysis ── */
+    function rgbToHsv(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+      let h = 0;
+      const s = max === 0 ? 0 : d / max;
+      const v = max;
+      if (d) {
+        switch (max) {
+          case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+          case g: h = ((b - r) / d + 2) / 6; break;
+          case b: h = ((r - g) / d + 4) / 6; break;
+        }
+      }
+      return [h * 360, s, v];
+    }
+
+    function classifyPixel(r, g, b) {
+      const [h, s, v] = rgbToHsv(r, g, b);
+      if (v < 0.22)                                           return "eschar";        /* very dark */
+      if (v < 0.40 && s > 0.28 && h >= 0  && h <= 45)       return "eschar";        /* dark brown */
+      if (h >= 25  && h <= 100 && v > 0.35)                  return "slough";        /* yellow/cream/green */
+      if (s < 0.18 && v >= 0.55 && v <= 0.93)                return "slough";        /* pale/cream */
+      if ((h <= 25 || h >= 335) && s < 0.38 && v > 0.60)    return "epithelialization"; /* pale pink/pearl */
+      if ((h <= 30 || h >= 320) && s >= 0.22 && v >= 0.20)  return "granulation";   /* red/pink */
+      if ((h <= 45 || h >= 310) && s >= 0.12)                return "granulation";   /* muted pink-red */
+      return "slough";
+    }
+
+    function analyze() {
+      const c = cvs(); if (!c || !photo || woundPts.length < 2) return null;
+      const ix1 = Math.max(0, Math.min(woundPts[0].ix, woundPts[1].ix));
+      const iy1 = Math.max(0, Math.min(woundPts[0].iy, woundPts[1].iy));
+      const ix2 = Math.min(photoW, Math.max(woundPts[0].ix, woundPts[1].ix));
+      const iy2 = Math.min(photoH, Math.max(woundPts[0].iy, woundPts[1].iy));
+      const rw = Math.round(ix2 - ix1); const rh = Math.round(iy2 - iy1);
+      if (rw < 5 || rh < 5) return null;
+
+      /* draw selection at 1:1 on offscreen canvas for exact pixel data */
+      const off = document.createElement("canvas");
+      off.width = rw; off.height = rh;
+      const octx = off.getContext("2d");
+      octx.drawImage(photo, -ix1, -iy1, photoW, photoH);
+      const data = octx.getImageData(0, 0, rw, rh).data;
+
+      const counts = { granulation: 0, slough: 0, eschar: 0, epithelialization: 0 };
+      let total = 0;
+      /* sample every 4th pixel (stride=16 bytes) for performance */
+      for (let i = 0; i < data.length; i += 16) {
+        if (data[i + 3] < 128) continue;
+        counts[classifyPixel(data[i], data[i + 1], data[i + 2])]++;
+        total++;
+      }
+      if (!total) return null;
+
+      const pct = {};
+      let sum = 0;
+      for (const k of ["granulation", "slough", "eschar", "epithelialization"]) {
+        pct[k] = Math.round((counts[k] / total) * 100);
+        sum += pct[k];
+      }
+      /* nudge granulation so total == 100 */
+      pct.granulation = Math.max(0, pct.granulation + (100 - sum));
+
+      let lCm = null, wCm = null, areaCm = null;
+      if (pxPerCm) {
+        lCm   = parseFloat((Math.max(rw, rh) / pxPerCm).toFixed(1));
+        wCm   = parseFloat((Math.min(rw, rh) / pxPerCm).toFixed(1));
+        areaCm = parseFloat((lCm * wCm).toFixed(2));
+      }
+      return { pct, lCm, wCm, areaCm };
+    }
+
+    /* ── results ── */
+    function renderResults() {
+      const panel = $("analyzerResults"); if (!panel) return;
+      const { pct, lCm, wCm, areaCm } = results;
+      const sizeHtml = lCm != null
+        ? `<strong>${lCm} × ${wCm} cm</strong> &nbsp;(area&nbsp;${areaCm}&nbsp;cm²)`
+        : `<em>No ruler — size not calculated. <a href="#" id="azGoBackRuler">Go back to add ruler.</a></em>`;
+
+      panel.innerHTML = `
+        <div class="az-results-grid">
+          <div class="az-result-size">${sizeHtml}</div>
+          ${[
+            { key:"granulation",      label:"Granulation",      color:"#c0392b" },
+            { key:"slough",           label:"Slough / Fibrin",  color:"#c8b400" },
+            { key:"eschar",           label:"Eschar",           color:"#4a3728" },
+            { key:"epithelialization",label:"Epithelialization",color:"#d98cb3" },
+          ].map(({ key, label, color }) => `
+            <div class="az-result-row">
+              <span class="az-swatch" style="background:${color}"></span>
+              <span class="az-rlabel">${label}</span>
+              <span class="az-rval">${pct[key]}%</span>
+              <div class="az-rbar"><div class="az-rbar-fill" style="width:${pct[key]}%;background:${color}"></div></div>
+            </div>`).join("")}
+        </div>
+        <p class="az-disclaimer">Color analysis is an estimate based on pixel hues. Lighting and wound moisture affect accuracy — review and adjust values before saving.</p>`;
+
+      document.getElementById("azGoBackRuler")?.addEventListener("click", (e) => { e.preventDefault(); setStep(2); });
+    }
+
+    /* ── apply to card ── */
+    function applyResults() {
+      if (!activeCard || !results) return;
+      const set = (field, val) => {
+        const inp = activeCard.querySelector(`[data-field="${field}"]`);
+        if (inp && val != null) {
+          inp.value = val;
+          inp.dispatchEvent(new Event("input", { bubbles: true }));
+          inp.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      };
+      if (results.lCm != null) { set("length_cm", results.lCm); set("width_cm", results.wCm); }
+      set("granulation_pct",      results.pct.granulation);
+      set("slough_pct",           results.pct.slough);
+      set("eschar_pct",           results.pct.eschar);
+      set("epithelialization_pct",results.pct.epithelialization);
+      /* trigger tissue-pct validation */
+      activeCard.querySelectorAll("[data-field]").forEach((el) =>
+        el.dispatchEvent(new Event("change", { bubbles: true }))
+      );
+      close();
+    }
+
+    /* ── navigation ── */
+    function onNext() {
+      if (step === 1) {
+        setStep(2);
+      } else if (step === 2) {
+        if (rulerPts.length === 2) {
+          const cm = parseFloat($("analyzerRulerCm")?.value || "0");
+          if (cm > 0) pxPerCm = pxDist(rulerPts[0], rulerPts[1]) / cm;
+        }
+        setStep(3);
+      } else if (step === 3) {
+        const r = analyze();
+        if (!r) return;
+        results = r;
+        renderResults();
+        setStep(4);
+      }
+    }
+
+    function onBack() { if (step > 1) setStep(step - 1); }
+
+    /* ── photo input ── */
+    function onPhotoChange(evt) {
+      const file = evt.target.files?.[0]; if (!file) return;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        photo = img; photoW = img.naturalWidth; photoH = img.naturalHeight;
+        setupCanvas();
+        const nb = $("analyzerNextBtn"); if (nb) nb.disabled = false;
+        setStep(1); /* re-render step 1 indicator as done-ready */
+        /* advance automatically */
+        setStep(2);
+      };
+      img.src = url;
+    }
+
+    /* ── wire up ── */
+    function init() {
+      $("analyzerPhotoInput")?.addEventListener("change", onPhotoChange);
+      $("analyzerCloseBtn")?.addEventListener("click", close);
+      $("analyzerNextBtn")?.addEventListener("click", onNext);
+      $("analyzerBackBtn")?.addEventListener("click", onBack);
+      $("analyzerApplyBtn")?.addEventListener("click", applyResults);
+      $("analyzerSkipRulerBtn")?.addEventListener("click", () => setStep(3));
+      $("analyzerRulerClearBtn")?.addEventListener("click", () => { rulerPts = []; pxPerCm = null; drawCanvas(); updateRulerHint(); });
+      $("analyzerWoundClearBtn")?.addEventListener("click", () => { woundPts = []; drawCanvas(); updateWoundHint(); const nb = $("analyzerNextBtn"); if (nb) nb.disabled = true; });
+      $("woundAnalyzerModal")?.addEventListener("click", (e) => { if (e.target.id === "woundAnalyzerModal") close(); });
+      /* canvas events — touchstart + click for both mobile and desktop */
+      const c = cvs();
+      if (c) {
+        c.addEventListener("click",      onCanvasTap);
+        c.addEventListener("touchstart", onCanvasTap, { passive: false });
+      }
+      $("analyzerRulerCm")?.addEventListener("input", () => { drawCanvas(); updateRulerHint(); });
+    }
+
+    /* expose globally for event delegation */
+    window.openWoundAnalyzer = open;
+
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+    else init();
+  }
+  initWoundAnalyzer();
+
   /* ── Authentication ──────────────────────────────────────────────────── */
 
   const AUTH_STORAGE_KEY = "CICATRIX_AUTH_V1";
@@ -8121,6 +8497,10 @@
         </label>
       </div>
       <div data-tissue-alert class="tissue-pct-alert"></div>
+      <div class="az-card-btn-row">
+        <button type="button" class="az-analyze-btn" data-manual-action="open-analyzer">📷 Analyze Photo</button>
+        <span class="az-card-btn-hint">Auto-fill measurements &amp; tissue %</span>
+      </div>
       <details class="manual-prior manual-clinical-details">
         <summary>Clinical Details <span class="manual-details-hint">(wound characteristics, infection flags)</span></summary>
         <div class="manual-grid manual-prior">
@@ -8258,13 +8638,21 @@
 
   function handleManualWoundListClick(event) {
     const remove = event.target.closest("[data-manual-action='remove']");
-    if (!remove) return;
-    event.preventDefault();
-    const card = remove.closest(".manual-wound-card");
-    const cards = els.manualWoundList ? els.manualWoundList.querySelectorAll(".manual-wound-card") : [];
-    if (!card || cards.length <= 1) return;
-    card.remove();
-    renumberManualWoundCards();
+    if (remove) {
+      event.preventDefault();
+      const card = remove.closest(".manual-wound-card");
+      const cards = els.manualWoundList ? els.manualWoundList.querySelectorAll(".manual-wound-card") : [];
+      if (!card || cards.length <= 1) return;
+      card.remove();
+      renumberManualWoundCards();
+      return;
+    }
+    const analyzeBtn = event.target.closest("[data-manual-action='open-analyzer']");
+    if (analyzeBtn) {
+      event.preventDefault();
+      const card = analyzeBtn.closest(".manual-wound-card");
+      if (card && typeof openWoundAnalyzer === "function") openWoundAnalyzer(card);
+    }
   }
 
   function readManualField(card, field) {

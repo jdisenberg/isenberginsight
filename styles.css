@@ -2155,3 +2155,342 @@ body.name-gate-active {
   .cms-guide-meta { display: none; }
   .cms-bl td:first-child { width: 90px; font-size: 0.77rem; }
 }
+
+/* ── Wound Photo Analyzer ───────────────────────────────────────────────── */
+
+/* Button on wound card */
+.az-card-btn-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 4px;
+}
+
+.az-analyze-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1.5px solid #6b1f2a;
+  background: #fff;
+  color: #6b1f2a;
+  cursor: pointer;
+  transition: background 80ms, color 80ms;
+  white-space: nowrap;
+}
+.az-analyze-btn:hover { background: #6b1f2a; color: #fff; }
+
+.az-card-btn-hint {
+  font-size: 0.74rem;
+  color: #7a8fa0;
+  font-style: italic;
+}
+
+/* Modal overlay */
+.wound-analyzer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: safe center;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(10, 24, 34, 0.72);
+  backdrop-filter: blur(6px);
+}
+.wound-analyzer-overlay[hidden] { display: none !important; }
+
+.wound-analyzer-card {
+  width: min(100%, 760px);
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.38);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.az-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 12px;
+  background: #1b3a4b;
+  color: #fff;
+}
+
+.az-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  color: #fff;
+}
+
+.az-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.75);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.az-close:hover { color: #fff; background: rgba(255,255,255,0.15); }
+
+/* Step indicator */
+.az-steps {
+  display: flex;
+  gap: 0;
+  background: #eef4f8;
+  border-bottom: 1px solid #d0dde5;
+}
+
+.az-step-dot {
+  flex: 1;
+  text-align: center;
+  padding: 8px 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #8aa0b0;
+  border-right: 1px solid #d0dde5;
+  transition: background 120ms, color 120ms;
+}
+.az-step-dot:last-child { border-right: none; }
+.az-step-dot.az-step-done   { color: #4a7d5a; background: #edf7f0; }
+.az-step-dot.az-step-active { color: #1b3a4b; background: #dceef7; font-weight: 800; }
+
+/* Section content areas */
+.az-section {
+  padding: 16px 18px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.az-instruction {
+  font-size: 0.88rem;
+  color: #2c4d5e;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.az-hint {
+  font-size: 0.84rem;
+  color: #1b3a4b;
+  font-weight: 600;
+  margin: 0;
+  background: #dceef7;
+  border-radius: 6px;
+  padding: 7px 12px;
+}
+
+.az-tip {
+  font-size: 0.76rem;
+  color: #6b8090;
+  font-style: italic;
+  margin: 0;
+}
+
+/* Photo input */
+.az-photo-label { cursor: pointer; }
+.az-photo-label input[type="file"] { display: none; }
+
+.az-photo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  background: #1b3a4b;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 80ms;
+}
+.az-photo-btn:hover { background: #264f65; }
+
+/* Canvas */
+.az-canvas-wrap {
+  padding: 0 18px;
+  display: flex;
+  justify-content: center;
+}
+.az-canvas-wrap[hidden] { display: none !important; }
+
+.az-canvas {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1.5px solid #b5c4d0;
+  cursor: crosshair;
+  display: block;
+  touch-action: none;
+}
+
+/* Calibration row */
+.az-calib-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.az-cm-input {
+  flex: 1;
+  min-width: 120px;
+  padding: 7px 10px;
+  border: 1.5px solid #b5c4d0;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  color: #1b3a4b;
+}
+.az-cm-input:focus { outline: none; border-color: #6b1f2a; }
+
+.az-small-btn {
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1.5px solid #b5c4d0;
+  background: #f5f8fa;
+  color: #44637a;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.az-small-btn:hover { background: #e4edf3; }
+
+.az-skip-btn {
+  font-size: 0.78rem;
+  padding: 5px 0;
+  background: none;
+  border: none;
+  color: #6b8090;
+  cursor: pointer;
+  text-decoration: underline;
+  text-align: left;
+}
+.az-skip-btn:hover { color: #1b3a4b; }
+
+/* Results */
+.az-results { padding: 0 0 4px; }
+
+.az-results-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.az-result-size {
+  font-size: 0.92rem;
+  color: #1b3a4b;
+  padding: 10px 14px;
+  background: #eef4f8;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.az-result-row {
+  display: grid;
+  grid-template-columns: 14px 140px 44px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+}
+
+.az-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.az-rlabel {
+  font-size: 0.84rem;
+  color: #2c4d5e;
+  font-weight: 600;
+}
+
+.az-rval {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #1b3a4b;
+  text-align: right;
+}
+
+.az-rbar {
+  background: #e4edf3;
+  border-radius: 4px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.az-rbar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 400ms ease;
+}
+
+.az-disclaimer {
+  font-size: 0.74rem;
+  color: #7a8fa0;
+  font-style: italic;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  background: #f5f8fa;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+/* Nav bar */
+.az-nav {
+  display: flex;
+  gap: 10px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid #e4edf3;
+  background: #f7fafb;
+}
+
+.az-btn-secondary, .az-btn-primary, .az-btn-apply {
+  padding: 9px 20px;
+  border-radius: 9px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: background 80ms;
+}
+
+.az-btn-secondary {
+  background: #e4edf3;
+  color: #1b3a4b;
+}
+.az-btn-secondary:hover { background: #d0dde5; }
+.az-btn-secondary[hidden] { display: none !important; }
+
+.az-btn-primary {
+  background: #1b3a4b;
+  color: #fff;
+  margin-left: auto;
+}
+.az-btn-primary:hover:not(:disabled) { background: #264f65; }
+.az-btn-primary:disabled { opacity: 0.45; cursor: default; }
+.az-btn-primary[hidden] { display: none !important; }
+
+.az-btn-apply {
+  background: #6b1f2a;
+  color: #fff;
+  margin-left: auto;
+}
+.az-btn-apply:hover { background: #4a1520; }
+.az-btn-apply[hidden] { display: none !important; }
+
+@media (max-width: 500px) {
+  .az-result-row { grid-template-columns: 14px 1fr 40px; }
+  .az-rbar { display: none; }
+  .az-step-dot { font-size: 0.68rem; padding: 7px 2px; }
+}

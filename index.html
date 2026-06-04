@@ -323,6 +323,65 @@
       </section>
     </section>
 
+    <!-- Wound Photo Analyzer Modal -->
+    <section id="woundAnalyzerModal" class="wound-analyzer-overlay" role="dialog" aria-modal="true" aria-label="Wound Photo Analyzer" hidden>
+      <div class="wound-analyzer-card">
+        <div class="az-header">
+          <h2 class="az-title">Wound Photo Analyzer</h2>
+          <button type="button" id="analyzerCloseBtn" class="az-close" aria-label="Close">✕</button>
+        </div>
+
+        <div class="az-steps" aria-label="Progress steps">
+          <span class="az-step-dot" data-step="1">1 · Photo</span>
+          <span class="az-step-dot" data-step="2">2 · Ruler</span>
+          <span class="az-step-dot" data-step="3">3 · Wound</span>
+          <span class="az-step-dot" data-step="4">4 · Results</span>
+        </div>
+
+        <!-- Step 1: Photo capture -->
+        <div id="azPhotoSection" class="az-section">
+          <p class="az-instruction">Take a photo of the wound or select one from your device. Good, even lighting gives the most accurate color analysis.</p>
+          <label class="az-photo-label">
+            <input type="file" id="analyzerPhotoInput" accept="image/*" capture="environment" />
+            <span class="az-photo-btn">📷 Take / Choose Photo</span>
+          </label>
+          <p class="az-tip">Tip: include a standard ruler or coin in the frame to enable automatic size measurement in step 2.</p>
+        </div>
+
+        <!-- Canvas — shared by steps 2–4 -->
+        <div id="azCanvasWrap" class="az-canvas-wrap" hidden>
+          <canvas id="analyzerCanvas" class="az-canvas"></canvas>
+        </div>
+
+        <!-- Step 2: Ruler calibration -->
+        <div id="azCalibSection" class="az-section" hidden>
+          <p id="analyzerRulerHint" class="az-hint">Tap two points on the ruler in the photo above.</p>
+          <div class="az-calib-row">
+            <input type="number" id="analyzerRulerCm" class="az-cm-input" placeholder="Distance between points (cm)" step="0.5" min="0.1" max="100" />
+            <button type="button" id="analyzerRulerClearBtn" class="az-small-btn">Reset points</button>
+          </div>
+          <button type="button" id="analyzerSkipRulerBtn" class="az-skip-btn">Skip — no ruler in photo</button>
+        </div>
+
+        <!-- Step 3: Wound outline -->
+        <div id="azWoundSection" class="az-section" hidden>
+          <p id="analyzerWoundHint" class="az-hint">Tap two opposite corners of a rectangle around the wound bed.</p>
+          <button type="button" id="analyzerWoundClearBtn" class="az-small-btn">Reset selection</button>
+        </div>
+
+        <!-- Step 4: Results -->
+        <div id="azResultsSection" class="az-section" hidden>
+          <div id="analyzerResults" class="az-results"></div>
+        </div>
+
+        <div class="az-nav">
+          <button type="button" id="analyzerBackBtn" class="az-btn-secondary" hidden>← Back</button>
+          <button type="button" id="analyzerNextBtn" class="az-btn-primary" disabled>Next →</button>
+          <button type="button" id="analyzerApplyBtn" class="az-btn-apply" hidden>Apply to Wound Fields ✓</button>
+        </div>
+      </div>
+    </section>
+
     <script src="app.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
