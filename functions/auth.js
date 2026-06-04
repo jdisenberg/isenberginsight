@@ -56,9 +56,6 @@ export async function onRequest(context) {
   if (request.method !== "POST") {
     return json({ ok: false, error: "method_not_allowed" }, 405);
   }
-  if (!env.CICATRIX_AUDIT) {
-    return json({ ok: false, error: "kv_not_configured" }, 503);
-  }
 
   let body;
   try {
@@ -68,6 +65,12 @@ export async function onRequest(context) {
   }
 
   const action = String(body.action || "").trim();
+
+  /* login and verify are allowed even without KV (built-in admin bypass works without KV) */
+  const kvRequired = !["login", "verify"].includes(action);
+  if (kvRequired && !env.CICATRIX_AUDIT) {
+    return json({ ok: false, error: "kv_not_configured" }, 503);
+  }
 
   try {
     switch (action) {
@@ -84,6 +87,46 @@ export async function onRequest(context) {
   } catch (err) {
     return json({ ok: false, error: "server_error", detail: String(err) }, 500);
   }
+}
+
+/* ── Built-in admin (env-var credentials, no KV required) ────────────── */
+
+/**
+ * Derives a stable session token from the built-in admin credentials using
+ * HMAC-SHA256. The token changes automatically if CICATRIX_ADMIN_PASS changes,
+ * which invalidates any stored sessions — forcing a fresh login.
+ *
+ * Set in Cloudflare Pages → Settings → Environment variables:
+ *   CICATRIX_ADMIN_USER = isenberg
+ *   CICATRIX_ADMIN_PASS = <your password>
+ */
+async function builtinAdminToken(env) {
+  if (!env.CICATRIX_ADMIN_USER || !env.CICATRIX_ADMIN_PASS) return null;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(env.CICATRIX_ADMIN_PASS),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign(
+    "HMAC", key, new TextEncoder().encode(normalizeUsername(env.CICATRIX_ADMIN_USER))
+  );
+  return "builtin-" + bytesToHex(new Uint8Array(sig));
+}
+
+function builtinAdminPublic(env) {
+  return {
+    username: normalizeUsername(env.CICATRIX_ADMIN_USER),
+    email: "",
+    role: "admin",
+    terms_accepted_at: "",
+    created_at: "",
+    updated_at: "",
+    last_login_at: new Date().toISOString(),
+    needs_password_reset: false,
+    reset_requested_at: "",
+  };
 }
 
 /* ── Account actions ──────────────────────────────────────────────────── */
@@ -130,6 +173,18 @@ async function handleLogin(env, body) {
   const password = String(body.password || "");
   if (!username || !password) return json({ ok: false, error: "credentials_required" }, 400);
 
+  /* Built-in admin bypass — works even if KV is not configured */
+  if (env.CICATRIX_ADMIN_USER && env.CICATRIX_ADMIN_PASS &&
+      normalizeUsername(env.CICATRIX_ADMIN_USER) === username) {
+    if (!timingSafeEqual(env.CICATRIX_ADMIN_PASS, password)) {
+      return json({ ok: false, error: "invalid_credentials" }, 401);
+    }
+    const token = await builtinAdminToken(env);
+    return json({ ok: true, ...builtinAdminPublic(env), token });
+  }
+
+  if (!env.CICATRIX_AUDIT) return json({ ok: false, error: "kv_not_configured" }, 503);
+
   /* Brute-force lockout check */
   const now = Date.now();
   const lock = await getLockout(env, username);
@@ -165,6 +220,18 @@ async function handleVerify(env, body) {
   const username = normalizeUsername(body.username);
   const token = String(body.token || "");
   if (!username || !token) return json({ ok: false, error: "session_invalid" }, 401);
+
+  /* Built-in admin: verify against derived token, no KV needed */
+  if (env.CICATRIX_ADMIN_USER && normalizeUsername(env.CICATRIX_ADMIN_USER) === username) {
+    const expected = await builtinAdminToken(env);
+    if (expected && timingSafeEqual(token, expected)) {
+      return json({ ok: true, ...builtinAdminPublic(env), token });
+    }
+    /* Wrong token for admin — fall through to KV check in case they also
+       have a KV-registered account under the same username */
+  }
+
+  if (!env.CICATRIX_AUDIT) return json({ ok: false, error: "session_invalid" }, 401);
 
   const user = await getUser(env, username);
   if (!user || user.session_token !== token) {

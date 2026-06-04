@@ -748,6 +748,7 @@
   /* ── Authentication ──────────────────────────────────────────────────── */
 
   const AUTH_STORAGE_KEY = "CICATRIX_AUTH_V1";
+  const AUTH_LAST_USER_KEY = "CICATRIX_LAST_USER";
   let authState = null; /* { username, token, role, email } once signed in */
 
   const AUTH_ERROR_MESSAGES = {
@@ -780,11 +781,19 @@
   }
 
   function saveStoredAuth(obj) {
-    try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(obj)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(obj));
+      if (obj.username) localStorage.setItem(AUTH_LAST_USER_KEY, obj.username);
+    } catch { /* ignore */ }
   }
 
   function clearStoredAuth() {
     try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch { /* ignore */ }
+    /* Keep AUTH_LAST_USER_KEY so the username field stays pre-filled */
+  }
+
+  function loadLastUsername() {
+    try { return localStorage.getItem(AUTH_LAST_USER_KEY) || ""; } catch { return ""; }
   }
 
   function isCurrentUserAdmin() {
@@ -860,7 +869,7 @@
       role: data.role || "user",
       email: data.email || "",
     };
-    saveStoredAuth({ username: authState.username, token });
+    saveStoredAuth({ username: authState.username, token, role: authState.role });
     if (els.settingsUserLabel) els.settingsUserLabel.value = authState.username;
     setAppAccessLocked(false);
     if (els.userAdminSection) els.userAdminSection.classList.toggle("hidden", !isCurrentUserAdmin());
@@ -991,13 +1000,30 @@
   /** On load: try to resume a stored session; otherwise lock to the login view. */
   async function initializeAuth() {
     if (!els.nameGateOverlay || !els.authLoginForm) {
-      /* Auth UI missing — fail open so the app is still usable */
+      setAppAccessLocked(false);
+      return true;
+    }
+
+    /* Skip auth gate on localhost and Cloudflare preview deployments */
+    const host = window.location.hostname;
+    /* Any subdomain of isenberginsight.pages.dev is a Cloudflare preview deployment */
+    const isPreview = host === "localhost" || host === "127.0.0.1" ||
+      /\.isenberginsight\.pages\.dev$/.test(host);
+    if (isPreview) {
+      authState = { username: "preview", token: "", role: "admin", email: "" };
       setAppAccessLocked(false);
       return true;
     }
     const stored = loadStoredAuth();
     setAppAccessLocked(true);
     showAuthView("login");
+
+    /* Pre-fill username from last successful login */
+    const lastUser = (stored && stored.username) || loadLastUsername();
+    if (lastUser && els.loginUsername && !els.loginUsername.value) {
+      els.loginUsername.value = lastUser;
+    }
+
     if (!stored) return false;
 
     const res = await authFetch({ action: "verify", username: stored.username, token: stored.token });
@@ -1015,7 +1041,7 @@
       setStatus(readyStatusText());
       return true;
     }
-    /* Session rejected (expired/invalid) — clear it and show login */
+    /* Session rejected (expired/invalid) — clear token but keep username pre-fill */
     clearStoredAuth();
     return false;
   }
@@ -6478,6 +6504,291 @@
   }
 
 
+  /* ═══════════════════════════════════════════════════════════
+     CMS Coverage & Documentation Guide
+     ═══════════════════════════════════════════════════════════ */
+
+  function buildCMSGuide(row) {
+    const c = buildContext(row, null, row.manual_overrides || null);
+
+    const heavyExudate = c.exudateProxy ||
+      ["moderate", "heavy", "very_heavy"].includes(c.effectiveExudateAmount || "");
+    const dryWound = (c.eschar > 0 || c.slough > 0) && !heavyExudate;
+    const infected  = c.potentialBioburden || (c.effectiveInfectionSigns && c.effectiveInfectionSigns.length > 0);
+
+    /* ── Required documentation (always shown) ─────────────── */
+    const chart = [
+      { req: true,  item: "Wound location",                detail: "Specific anatomical site with laterality (right/left)" },
+      { req: true,  item: "Wound dimensions",              detail: "Length × Width × Depth in centimeters — measured at every visit" },
+      { req: true,  item: "Wound bed tissue composition",  detail: "% granulation, % slough, % eschar — values must sum to 100%" },
+      { req: true,  item: "Exudate assessment",            detail: "Amount (none/minimal/moderate/heavy) and type (serous/serosanguineous/purulent)" },
+      { req: true,  item: "Periwound condition",           detail: "Maceration, induration, erythema, fragility, callus" },
+      { req: true,  item: "Wound edges",                   detail: "Attached / rolled (epibole) / undermined / tunneled — note extent in cm if present" },
+      { req: true,  item: "Treatment applied",             detail: "Dressing type (primary and secondary); wound care procedure performed" },
+      { req: true,  item: "Clinical rationale",            detail: "Why this dressing/treatment was selected — required to support medical necessity" },
+      { req: true,  item: "Response to prior treatment",   detail: "Objective improvement, no change, or worsening since last visit with measurements" },
+      { req: false, item: "Odor",                          detail: "None / mild / moderate / strong — document character if present" },
+      { req: false, item: "Pain",                          detail: "Numeric rating at wound site; note if dressing-change related" },
+      { req: false, item: "Patient/caregiver education",   detail: "Teaching provided — required for home health coverage" },
+    ];
+
+    if (c.diabeticFootRelated) {
+      chart.push(
+        { req: true,  item: "Off-loading device",          detail: "TCC, removable cast walker, or orthotic — required for DFU medical necessity" },
+        { req: true,  item: "Vascular status (ABI / TBI)", detail: "ABI ≥ 0.6 to support healing potential; use TBI if ABI non-compressible" },
+        { req: true,  item: "HbA1c / glycemic control",    detail: "Glucose control status — impacts medical necessity and CTP eligibility" },
+        { req: false, item: "Monofilament / neuro exam",   detail: "10g monofilament test result or equivalent neurological assessment" },
+      );
+    }
+    if (c.pressureRelated) {
+      chart.push(
+        { req: true,  item: "Support surface",             detail: "Mattress/cushion type in use — required for pressure injury billing" },
+        { req: true,  item: "Repositioning schedule",      detail: "Frequency and method — documents the pressure relief plan" },
+        { req: false, item: "Braden Scale score",          detail: "Risk assessment score with date — supports medical necessity documentation" },
+      );
+    }
+    if (c.venousRelated) {
+      chart.push(
+        { req: true,  item: "ABI value and date",          detail: "ABI ≥ 0.8 required for compression; 0.5–0.8 requires physician review; < 0.5 is contraindicated" },
+        { req: true,  item: "Compression therapy type",    detail: "Multi-layer, Unna boot, or stockings — document patient compliance at each visit" },
+        { req: false, item: "Leg elevation instructions",  detail: "Documents conservative management component for LCD compliance" },
+      );
+    }
+    if (c.osteomyelitisSignal) {
+      chart.push(
+        { req: true,  item: "Imaging date and findings",   detail: "MRI, bone scan, or X-ray report reference — required for osteomyelitis coding" },
+        { req: true,  item: "Antibiotic therapy",          detail: "Drug name, dose, route, duration — required for OM management coverage" },
+        { req: false, item: "Bone biopsy / culture",       detail: "Organism and sensitivities if biopsy performed" },
+      );
+    }
+
+    /* ── Dressings ─────────────────────────────────────────── */
+    const dressings = [];
+
+    if (heavyExudate || c.venousRelated || c.diabeticFootRelated || c.pressureRelated) {
+      dressings.push({
+        name: "Alginate",
+        hcpcs: "A6196 (≤16 sq in) · A6197 (>16–48 sq in) · A6198 (>48 sq in)",
+        frequency: "Up to 3× per week as primary; may be used as wound filler without frequency limit",
+        indication: "Moderate-to-heavy exudate; hemostatic property useful for bleeding wounds",
+        mustDoc: "Moderate or heavy exudate documented; wound dimensions; wound bed description",
+      });
+      dressings.push({
+        name: "Foam",
+        hcpcs: "A6209–A6214 (non-bordered/bordered, by size)",
+        frequency: "Up to 3× per week",
+        indication: "Moderate-to-heavy exudate; granulating wound bed",
+        mustDoc: "Moderate-heavy exudate amount and type; wound dimensions; granulating or moist wound bed",
+      });
+      dressings.push({
+        name: "Specialty absorptive (super-absorbent)",
+        hcpcs: "A6251–A6256 (by size)",
+        frequency: "Up to 3× per week",
+        indication: "Heavy-to-very-heavy exudate requiring absorptive capacity beyond standard foam",
+        mustDoc: "Heavy exudate documented; clinical reason standard foam is insufficient",
+      });
+    }
+
+    if (!heavyExudate || c.pressureRelated || c.venousRelated) {
+      dressings.push({
+        name: "Hydrocolloid",
+        hcpcs: "A6234–A6241 (thin/standard, by size)",
+        frequency: "Up to 3× per week; may remain in place up to 7 days if clinically appropriate",
+        indication: "Light-to-moderate exudate; stage 2 pressure injury; clean partial-thickness wounds",
+        mustDoc: "Light-moderate exudate; wound not infected; intact wound edges; wound dimensions",
+      });
+    }
+
+    if (dryWound || c.debridementNeeded) {
+      dressings.push({
+        name: "Hydrogel",
+        hcpcs: "A6231–A6233 (sheets) · A6248 (impregnated gauze)",
+        frequency: "Up to 3× per week",
+        indication: "Dry or minimally exudating wound; necrotic/sloughy wound bed needing moisture donation",
+        mustDoc: "Dry or minimal exudate documented; necrotic or sloughy tissue present requiring hydration",
+      });
+    }
+
+    dressings.push({
+      name: "Collagen",
+      hcpcs: "A6021 (≤16 sq in) · A6022 (>16–48 sq in) · A6023 (>48 sq in) · A6024 (filler)",
+      frequency: "1× per week (every 7 days)",
+      indication: "Stalled chronic wounds with clean, granulating bed; promotes ECM remodeling",
+      mustDoc: "Wound present > 30 days with inadequate healing; clean wound bed; conventional dressing therapy failed; wound dimensions",
+    });
+
+    dressings.push({
+      name: "Contact layer (non-adherent)",
+      hcpcs: "A6206 (≤16 sq in) · A6207 (>16–48 sq in) · A6208 (>48 sq in)",
+      frequency: "1× per week; designed to remain in place 5–7 days under secondary dressing",
+      indication: "Fragile wound beds; painful dressing changes; tunneling/undermining",
+      mustDoc: "Fragile wound bed or pain with dressing changes documented; used as primary contact layer",
+    });
+
+    if (infected) {
+      dressings.push({
+        name: "Silver-impregnated dressing",
+        hcpcs: "Billed under base dressing type code (foam, alginate, etc.) — no separate silver-specific HCPCS",
+        frequency: "Per base dressing type (typically ≤3×/week); limit to 2–4 weeks then reassess",
+        indication: "Infected or critically colonized wound; biofilm management",
+        mustDoc: "Infection signs documented: erythema, warmth, induration, purulent exudate, odor, or positive culture; reassessment after 2 weeks required",
+      });
+    }
+
+    /* ── Advanced therapies ─────────────────────────────────── */
+    const advanced = [];
+
+    if (c.diabeticFootRelated || c.pressureRelated || c.venousRelated || c.surgicalWound || c.traumaticWound || c.osteomyelitisSignal) {
+      advanced.push({
+        name: "Negative Pressure Wound Therapy (NPWT)",
+        codes: "A6550 (dressing kit) · E2402 (non-disposable pump, DME) · 97605/97606 (facility) · 97607/97608 (DME billing)",
+        frequency: "Continuous device application; dressing changes 3× per week in facility or per DME order",
+        criteria: [
+          "Wound has not adequately responded to conventional wound care for ≥ 30 days",
+          "Wound type is covered: DFU, pressure injury stage 3/4, venous ulcer, dehisced surgical wound, traumatic wound",
+          "Wound is free of untreated osteomyelitis and malignancy at wound base",
+          "No active uncontrolled bleeding; necrotic eschar covers < 30% of wound bed",
+          "Patient can tolerate device and is adherent to therapy plan",
+        ],
+        mustDoc: [
+          "Wound dimensions at NPWT initiation (L × W × D in cm)",
+          "Exudate type, amount, and approximate drainage volume per change",
+          "Wound bed description with tissue composition percentages",
+          "Prior conventional therapy documented — type, duration, and failure to heal",
+          "Wound debrided prior to initiation (necrotic/sloughy tissue removed)",
+          "NPWT setting: continuous vs. intermittent; target pressure (mmHg)",
+          "Reassessment plan — wound response documented at each dressing change",
+        ],
+      });
+    }
+
+    if (c.diabeticFootRelated || c.venousRelated) {
+      advanced.push({
+        name: "Cellular & Tissue-Based Products (CTPs / Skin Substitutes)",
+        codes: "Q4100–Q4299 (product-specific Q-code required) + 15271/15272 (application CPT)",
+        frequency: "Application every 4 weeks per CMS LCD; reassess wound response after each application",
+        criteria: [
+          c.diabeticFootRelated ? "DFU: wound area has NOT decreased by ≥ 50% after 4 continuous weeks of standard care — document this explicitly" : null,
+          c.venousRelated ? "VLU: wound not healed after 4 weeks of compression therapy plus standard wound care" : null,
+          "Wound free of infection and necrotic tissue at time of application",
+          "Wound area must be measured and documented immediately before application",
+          "Patient adherent to off-loading (DFU) or compression (VLU) during CTP therapy",
+          "Prior authorization required by most payers — verify before ordering",
+        ].filter(Boolean),
+        mustDoc: [
+          "Wound area: L (cm) × W (cm) = ___ sq cm — calculated immediately before application",
+          "4-week treatment history with serial measurements showing < 50% area reduction",
+          "Wound bed preparation confirmed: infection-free, clean granulating base",
+          "Off-loading device (DFU) or compression type and compliance (VLU) documented",
+          "Specific Q-code for CTP product applied with manufacturer name",
+          "Lot number and expiration date of CTP product applied",
+        ],
+      });
+    }
+
+    if (c.radiationWound || (c.diabeticFootRelated && c.osteomyelitisSignal) || c.osteomyelitisWound) {
+      advanced.push({
+        name: "Hyperbaric Oxygen Therapy (HBOT)",
+        codes: "G0277 (facility/HBO chamber) · 99183 (physician supervision — professional component)",
+        frequency: "20–30 sessions per treatment course; each session 90–120 min at 2.0–2.4 ATA",
+        criteria: [
+          c.diabeticFootRelated ? "DFU: Wagner Grade III or higher, no measurable improvement after 30 days of standard care" : null,
+          c.radiationWound ? "Radiation-damaged tissue or osteoradionecrosis (ORN) refractory to standard wound care" : null,
+          c.osteomyelitisSignal ? "Refractory osteomyelitis not responding to antibiotics and debridement" : null,
+          "TcPO2 (transcutaneous oxygen pressure) < 40 mmHg at wound site on room air",
+          "OR TcPO2 < 400 mmHg breathing 100% oxygen in the chamber (hypoxic challenge)",
+          "No absolute contraindications: untreated pneumothorax, concurrent bleomycin/doxorubicin",
+        ].filter(Boolean),
+        mustDoc: [
+          "TcPO2 measurement with date and value (< 40 mmHg on room air)",
+          "ICD-10 code supporting HBOT: E11.621 + L97.x (DFU with OM); L58.1 (radiation); M86.x (osteomyelitis)",
+          "Prior wound care failure — ≥ 30 days of standard care with no measurable improvement",
+          "Wound dimensions and wound bed description at HBOT initiation",
+          "Physician order: pressure (ATA), duration per session, total sessions ordered",
+          "Reassessment note after 20 sessions documenting objective improvement to justify continuation",
+        ],
+      });
+    }
+
+    if (c.venousRelated) {
+      advanced.push({
+        name: "Compression Therapy",
+        codes: "29580 (Unna boot) · 29581 (multi-layer below knee) · 29582 (multi-layer thigh/leg)",
+        frequency: "Weekly to twice weekly; multi-layer systems changed per exudate level and edema",
+        criteria: [
+          "Documented venous insufficiency / chronic venous hypertension (duplex ultrasound preferred)",
+          "ABI ≥ 0.8 (ABI 0.5–0.8 requires physician evaluation before applying; < 0.5 is contraindicated)",
+          "No acute DVT — obtain duplex ultrasound if DVT is suspected before initiating compression",
+          "Patient can tolerate graduated compression without arterial compromise or skin breakdown",
+        ],
+        mustDoc: [
+          "ABI value and date of measurement (within 12 months)",
+          "Venous insufficiency diagnosis: duplex findings or physician-documented clinical diagnosis",
+          "Compression type applied and estimated compression pressure (mmHg)",
+          "Limb circumference measurement at each visit",
+          "Lower extremity edema assessment: pit grade, distribution",
+          "Patient tolerance and skin condition under compression",
+        ],
+      });
+    }
+
+    return { chart, dressings, advanced };
+  }
+
+  function renderCMSGuideHtml(row) {
+    const guide = buildCMSGuide(row);
+    if (!guide) return "";
+    const { chart, dressings, advanced } = guide;
+    const woundLabel = [row.wound_type, row.location].filter(Boolean).join(" — ");
+
+    const chartHtml = chart.map((it) =>
+      `<tr class="cms-row">
+        <td class="cms-item"><span class="cms-badge ${it.req ? "cms-req" : "cms-opt"}">${it.req ? "Required" : "Helpful"}</span> ${escapeHtml(it.item)}</td>
+        <td class="cms-detail">${escapeHtml(it.detail)}</td>
+      </tr>`
+    ).join("");
+
+    const dressingHtml = dressings.map((d) =>
+      `<div class="cms-block">
+        <div class="cms-block-name">${escapeHtml(d.name)}</div>
+        <table class="cms-block-table">
+          <tr><td class="cms-bl">HCPCS</td><td>${escapeHtml(d.hcpcs)}</td></tr>
+          <tr><td class="cms-bl">Frequency limit</td><td>${escapeHtml(d.frequency)}</td></tr>
+          <tr><td class="cms-bl">Indication</td><td>${escapeHtml(d.indication)}</td></tr>
+          <tr><td class="cms-bl">Must document</td><td>${escapeHtml(d.mustDoc)}</td></tr>
+        </table>
+      </div>`
+    ).join("");
+
+    const advancedHtml = advanced.map((a) =>
+      `<div class="cms-block cms-block-advanced">
+        <div class="cms-block-name">${escapeHtml(a.name)}</div>
+        <table class="cms-block-table">
+          <tr><td class="cms-bl">Codes</td><td>${escapeHtml(a.codes)}</td></tr>
+          <tr><td class="cms-bl">Frequency</td><td>${escapeHtml(a.frequency)}</td></tr>
+          <tr><td class="cms-bl">Coverage criteria</td><td><ul class="cms-list">${a.criteria.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul></td></tr>
+          <tr><td class="cms-bl">Must document</td><td><ul class="cms-list">${a.mustDoc.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul></td></tr>
+        </table>
+      </div>`
+    ).join("");
+
+    return `
+      <details class="cms-guide-section">
+        <summary class="cms-guide-toggle">
+          <span class="cms-guide-label">CMS Coverage Guide</span>
+          <span class="cms-guide-meta">${escapeHtml(woundLabel || "Wound")} &middot; ${dressings.length} dressings &middot; ${advanced.length ? advanced.length + " advanced therapies" : "documentation"}</span>
+        </summary>
+        <div class="cms-guide-body">
+          <div class="cms-section-head">What to Chart for Coverage</div>
+          <table class="cms-chart-table">${chartHtml}</table>
+          <div class="cms-section-head">Dressings — CMS Frequency &amp; Billing</div>
+          ${dressingHtml}
+          ${advanced.length ? `<div class="cms-section-head">Advanced Therapy Coverage Criteria</div>${advancedHtml}` : ""}
+        </div>
+      </details>`;
+  }
+
+
   function buildPUSHScore(row) {
     const c = buildContext(row, null, row.manual_overrides || null);
     if (!c.pressureRelated) return null;
@@ -6670,6 +6981,11 @@
         .filter(Boolean)
         .join("");
 
+      const cmsGuideBlocks = patient.wounds
+        .map((row) => renderCMSGuideHtml(row))
+        .filter(Boolean)
+        .join("");
+
       return `
         <section class="narrative-patient">
           <div class="narrative-patient-header">
@@ -6679,6 +6995,7 @@
           <p class="narrative-summary">${escapeHtml(fullNarrative)}</p>
           ${pushBlocks}
           ${icd10Blocks || ""}
+          ${cmsGuideBlocks || ""}
         </section>
       `;
     });
