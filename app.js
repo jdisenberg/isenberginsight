@@ -1273,9 +1273,14 @@
     function analyze() {
       const c = cvs(); if (!c || !photo || woundPath.length < 3) return null;
 
-      /* bounding box of the freeform outline */
+      /* Outer ring polygon (wound dilated ~22% about its centroid) defines the
+         periwound zone — the band inside the outer polygon but outside the
+         traced wound outline. */
+      const periPath = dilatePolygon(woundPath, 1.22);
+
+      /* bounding box of the outer polygon (covers wound + periwound ring) */
       let ix1 = Infinity, iy1 = Infinity, ix2 = -Infinity, iy2 = -Infinity;
-      for (const p of woundPath) {
+      for (const p of periPath) {
         ix1 = Math.min(ix1, p.ix); iy1 = Math.min(iy1, p.iy);
         ix2 = Math.max(ix2, p.ix); iy2 = Math.max(iy2, p.iy);
       }
@@ -1292,17 +1297,24 @@
       const data = octx.getImageData(0, 0, rw, rh).data;
 
       const counts = { granulation: 0, slough: 0, eschar: 0, epithelialization: 0 };
-      let total = 0;
-      /* sample every 2nd pixel in each direction; classify only pixels that
-         fall inside the traced outline so healthy skin is excluded */
+      const periCounts = { erythema: 0, maceration: 0, normal: 0 };
+      let total = 0, periTotal = 0;
+      /* sample every 2nd pixel in each direction; wound-bed pixels (inside the
+         trace) are classified by tissue type, periwound-ring pixels (outside
+         the trace but inside the outer polygon) by skin condition */
       const stride = 2;
       for (let y = 0; y < rh; y += stride) {
         for (let x = 0; x < rw; x += stride) {
-          if (!pointInPath(ix1 + x, iy1 + y, woundPath)) continue;
+          const px = ix1 + x, py = iy1 + y;
           const idx = (y * rw + x) * 4;
           if (data[idx + 3] < 128) continue;
-          counts[classifyPixel(data[idx], data[idx + 1], data[idx + 2])]++;
-          total++;
+          if (pointInPath(px, py, woundPath)) {
+            counts[classifyPixel(data[idx], data[idx + 1], data[idx + 2])]++;
+            total++;
+          } else if (pointInPath(px, py, periPath)) {
+            periCounts[classifyPeriPixel(data[idx], data[idx + 1], data[idx + 2])]++;
+            periTotal++;
+          }
         }
       }
       if (!total) return null;
@@ -1326,7 +1338,36 @@
         wCm    = parseFloat((lw.widthPx  / pxPerCm).toFixed(1));
         areaCm = parseFloat((lCm * wCm).toFixed(2));
       }
-      return { pct, lCm, wCm, areaCm };
+
+      let peri = null;
+      if (periTotal >= 40) {
+        peri = {
+          sampled: periTotal,
+          erythemaPct: Math.round((periCounts.erythema / periTotal) * 100),
+          macerationPct: Math.round((periCounts.maceration / periTotal) * 100),
+        };
+      }
+      return { pct, lCm, wCm, areaCm, peri };
+    }
+
+    /* Dilate a polygon outward about its centroid by `factor` (1.0 = no change)
+       to approximate the surrounding periwound ring. */
+    function dilatePolygon(path, factor) {
+      let cx = 0, cy = 0;
+      for (const p of path) { cx += p.ix; cy += p.iy; }
+      cx /= path.length; cy /= path.length;
+      return path.map((p) => ({
+        ix: cx + (p.ix - cx) * factor,
+        iy: cy + (p.iy - cy) * factor,
+      }));
+    }
+
+    /* Classify a periwound (skin) pixel as erythema, maceration, or normal. */
+    function classifyPeriPixel(r, g, b) {
+      const [h, s, v] = rgbToHsv(r, g, b);
+      if (s < 0.16 && v > 0.78) return "maceration";                 /* pale, waterlogged */
+      if ((h <= 16 || h >= 345) && s >= 0.38 && v >= 0.35) return "erythema"; /* red, inflamed */
+      return "normal";
     }
 
     /* Greatest length (max distance between any two outline points) and the
@@ -1365,14 +1406,19 @@
     /* ── results ── */
     function renderResults() {
       const panel = $("analyzerResults"); if (!panel) return;
-      const { pct, lCm, wCm, areaCm } = results;
+      const { pct, lCm, wCm, areaCm, peri } = results;
       const sizeHtml = lCm != null
         ? `<strong>${lCm} × ${wCm} cm</strong> &nbsp;(area&nbsp;${areaCm}&nbsp;cm²)`
         : `<em>No ruler — size not calculated. <a href="#" id="azGoBackRuler">Go back to add ruler.</a></em>`;
 
+      const periHtml = peri
+        ? `<div class="az-result-size">Periwound skin (estimate): <strong>${peri.erythemaPct}%</strong> erythema · <strong>${peri.macerationPct}%</strong> maceration</div>`
+        : "";
+
       panel.innerHTML = `
         <div class="az-results-grid">
           <div class="az-result-size">${sizeHtml}</div>
+          ${periHtml}
           ${[
             { key:"granulation",      label:"Granulation",      color:"#c0392b" },
             { key:"slough",           label:"Slough / Fibrin",  color:"#c8b400" },
@@ -1407,6 +1453,12 @@
       set("slough_pct",           results.pct.slough);
       set("eschar_pct",           results.pct.eschar);
       set("epithelialization_pct",results.pct.epithelialization);
+      /* periwound skin condition — only when a dominant finding is detected */
+      if (results.peri) {
+        const { erythemaPct, macerationPct } = results.peri;
+        if (macerationPct >= 35 && macerationPct >= erythemaPct) set("periwound_condition", "macerated");
+        else if (erythemaPct >= 35) set("periwound_condition", "erythematous");
+      }
       /* trigger tissue-pct validation */
       activeCard.querySelectorAll("[data-field]").forEach((el) =>
         el.dispatchEvent(new Event("change", { bubbles: true }))
@@ -9006,10 +9058,18 @@
           <label class="manual-field">
             <span>Tunneling</span>
             ${manualSelect(MANUAL_TUNNELING_OPTIONS, "tunneling", "")}
+            <div class="manual-subfields" data-detail-for="tunneling" hidden>
+              <input data-field="tunneling_depth" type="number" step="0.1" min="0" inputmode="decimal" placeholder="depth cm" />
+              <input data-field="tunneling_clock" type="text" placeholder="position e.g. 7 o'clock" />
+            </div>
           </label>
           <label class="manual-field">
             <span>Undermining</span>
             ${manualSelect(MANUAL_UNDERMINING_OPTIONS, "undermining", "")}
+            <div class="manual-subfields" data-detail-for="undermining" hidden>
+              <input data-field="undermining_depth" type="number" step="0.1" min="0" inputmode="decimal" placeholder="depth cm" />
+              <input data-field="undermining_clock" type="text" placeholder="from–to e.g. 3–5 o'clock" />
+            </div>
           </label>
           <label class="manual-field">
             <span>Periwound Skin</span>
@@ -9266,6 +9326,26 @@
     return "";
   }
 
+  /* Build a clinical tunneling/undermining phrase including depth (cm) and
+     clock position when documented — e.g. "tunneling 2.5 cm at 7 o'clock". */
+  function composeTunnelText(presence, depth, clock, label) {
+    const norm = normalizeText(presence);
+    if (norm === "none") return `no ${label}`;
+    if (norm !== "present") return "";
+    let txt = `${label} present`;
+    const d = String(depth || "").trim();
+    const c = String(clock || "").trim();
+    if (d) {
+      const n = Number(d);
+      txt = `${label}${Number.isFinite(n) && n > 0 ? ` ${n} cm` : ""}`;
+    }
+    if (c) {
+      const hasClock = /o'?clock|o clock/i.test(c);
+      txt += ` at ${c}${hasClock ? "" : " o'clock"}`;
+    }
+    return txt;
+  }
+
   function manualFieldDocumented(card, field) {
     return readManualField(card, field) !== "";
   }
@@ -9325,8 +9405,16 @@
     const widthCm = readManualNumber(card, `${prefix}width_cm`);
     const depthCm = readManualNumber(card, `${prefix}depth_cm`);
     const areaCm2 = Number((lengthCm * widthCm).toFixed(2));
-    const tunnelingText = prefix ? "" : textForManualPresence(readManualField(card, "tunneling"), "tunneling present");
-    const underminingText = prefix ? "" : textForManualPresence(readManualField(card, "undermining"), "undermining present");
+    const tunnelingText = prefix ? "" : composeTunnelText(
+      readManualField(card, "tunneling"),
+      readManualField(card, "tunneling_depth"),
+      readManualField(card, "tunneling_clock"),
+      "tunneling");
+    const underminingText = prefix ? "" : composeTunnelText(
+      readManualField(card, "undermining"),
+      readManualField(card, "undermining_depth"),
+      readManualField(card, "undermining_clock"),
+      "undermining");
     const exposedText = labelsForOverrideValues(manualOverrides.exposed_structures).join(", ");
     const infectionText = labelsForOverrideValues(manualOverrides.infection_signs).join(", ");
 
@@ -9731,6 +9819,11 @@
         if (field === "stage") {
           const card = event.target.closest(".manual-wound-card");
           if (card) syncThicknessFromBurnClassification(card);
+        }
+        if (field === "tunneling" || field === "undermining") {
+          const label = event.target.closest(".manual-field");
+          const detail = label?.querySelector(`[data-detail-for="${field}"]`);
+          if (detail) detail.hidden = normalizeText(event.target.value) !== "present";
         }
       });
     }

@@ -533,6 +533,15 @@ th {
   font: inherit;
 }
 
+/* Tunneling / undermining detail inputs (depth + clock position) */
+.manual-subfields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 4px;
+}
+.manual-subfields[hidden] { display: none; }
+
 .manual-wound-list {
   display: grid;
   gap: 10px;
