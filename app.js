@@ -5976,6 +5976,12 @@
     const slough = Number(row.slough_pct || 0);
     const needsDebride = c.debridementNeeded || eschar > 0 || slough >= 20;
 
+    const stageText    = c.stageText;
+    const isStage4     = stageText.includes("stage 4") || stageText.includes("stage iv");
+    const isStage3     = stageText.includes("stage 3") || stageText.includes("stage iii");
+    const isUnstageable = stageText.includes("unstageable");
+    const fullThick    = c.manualThickness === "full_thickness";
+
     /* ── NF emergency ──────────────────────────────────── */
     if (c.necrotizingFasciitis) {
       add("11043", "Debridement, muscle and/or fascia; first 20 sq cm", "Emergency surgical debridement; use 11046 for each additional 20 sq cm");
@@ -5993,6 +5999,30 @@
       return suggestions;
     }
 
+    /* ── Traumatic Wound ──────────────────────────────── */
+    if (c.traumaticWound) {
+      const isBite = c.woundTypeText.includes("bite");
+      const isNeck = loc.includes("neck");
+      const isTrunk = loc.includes("abdom") || loc.includes("chest") || loc.includes("back") || loc.includes("flank") || loc.includes("thorax");
+      const deepStructures = c.manualExposedStructures && c.manualExposedStructures.length > 0;
+
+      if (depth >= 0.5 || c.cavityLikely || deepStructures) {
+        if (isNeck) add("20100", "Exploration of penetrating wound; neck");
+        else if (isTrunk) add("20102", "Exploration of penetrating wound; abdomen/flank/back", "Use 20101 for chest wall wounds");
+        else add("20103", "Exploration of penetrating wound; extremity", "Select 20100–20102 for neck, chest, or trunk injuries");
+      }
+      add("12001", "Repair, superficial; scalp/neck/axillae/trunk/extremities; 2.5 cm or less", "Use 12002–12007 for longer lacerations; 12031–12057 for layered/intermediate; 13100–13160 for complex repair");
+      if (needsDebride || isBite) {
+        add("97597", "Active wound care management, selective debridement; first 20 sq cm", "For contaminated or devitalized wound edges");
+        add("11042", "Debridement, subcutaneous tissue; first 20 sq cm", "For wounds with subcutaneous contamination; use 11045 per additional 20 sq cm");
+      }
+      if (deepStructures || isStage4 || c.osteomyelitisSignal) {
+        add("11043", "Debridement, muscle and/or fascia; first 20 sq cm", "For exposed muscle/tendon/fascia; use 11046 per additional 20 sq cm");
+      }
+      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management follow-up; use 99214 for higher medical decision complexity");
+      return suggestions;
+    }
+
     /* ── Fistula ───────────────────────────────────────── */
     if (c.fistulaWound) {
       add("97602", "Non-selective wound debridement, per session", "For periwound skin management");
@@ -6006,9 +6036,13 @@
       add("97597", "Active wound care management, selective debridement; first 20 sq cm");
       add("97598", "Active wound care management, selective debridement; each additional 20 sq cm");
       add("13160", "Secondary closure of surgical wound or dehiscence", "For delayed primary closure or secondary closure of dehisced incision");
-      if (depth >= 1.0 || c.cavityLikely) {
-        add("97605", "NPWT dressing change ≤ 50 sq cm", "For deep surgical wound dehiscence with cavity");
+      if (depth >= 1.0 || (c.cavityLikely && depth >= 0.5)) {
+        add("97605", "NPWT dressing change ≤ 50 sq cm", "For deep surgical wound dehiscence with significant cavity or tunneling");
         add("97606", "NPWT dressing change > 50 sq cm");
+      }
+      if (c.radiationWound) {
+        add("99183", "Physician or other QHP supervision of hyperbaric oxygen therapy, per session");
+        add("G0277", "HBOT, pressure, full body; 30 minutes", "Facility code; 99183 is professional component");
       }
       add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit");
       return suggestions;
@@ -6016,11 +6050,16 @@
 
     /* ── Osteomyelitis ─────────────────────────────────── */
     if (c.osteomyelitisWound && !c.pressureRelated && !c.diabeticFootRelated) {
-      add("11044", "Debridement, bone; first 20 sq cm", "For bone debridement/sequestrectomy");
+      add("11044", "Debridement, bone; first 20 sq cm", "For bone debridement/sequestrectomy; use 11047 for each additional 20 sq cm");
       add("11047", "Debridement, bone; each additional 20 sq cm");
       add("20220", "Biopsy, bone, trocar or needle; superficial", "For diagnostic bone biopsy; 20225 for deep");
       add("20245", "Biopsy, bone, open; deep", "When trocar/needle biopsy not possible or inconclusive");
       add("97605", "NPWT dressing change ≤ 50 sq cm", "For post-debridement wound management");
+      add("97606", "NPWT dressing change > 50 sq cm");
+      if (c.chronic) {
+        add("99183", "Physician or other QHP supervision of hyperbaric oxygen therapy, per session");
+        add("G0277", "HBOT, pressure, full body; 30 minutes", "Facility code; 99183 is professional component");
+      }
       add("99213", "Office/outpatient E&M, low-moderate complexity");
       return suggestions;
     }
@@ -6038,7 +6077,7 @@
     if (c.martorell) {
       add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Only after BP control established and pain adequately managed");
       add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; hypertension management billed separately");
-      if (c.radiationWound || depth >= 0.5) {
+      if (depth >= 0.5) {
         add("99183", "Physician supervision of hyperbaric oxygen therapy, per session");
         add("G0277", "HBOT, full body; 30 minutes");
       }
@@ -6047,8 +6086,8 @@
 
     /* ── Hidradenitis Suppurativa ───────────────────────── */
     if (c.hidradenitisSuppurativa) {
-      const stage = c.stageText;
-      if (stage.includes("hurley stage ii") || stage.includes("hurley ii") || stage.includes("hurley stage iii") || stage.includes("hurley iii")) {
+      const hsStage = c.stageText;
+      if (hsStage.includes("hurley stage ii") || hsStage.includes("hurley ii") || hsStage.includes("hurley stage iii") || hsStage.includes("hurley iii")) {
         add("10060", "Incision and drainage of abscess; simple/single", "For acute abscess I&D (Hurley I-II)");
         add("10061", "Incision and drainage of abscess; complicated/multiple", "Multiple or complicated abscesses");
         add("11450", "Excision of skin and subcutaneous tissue for hidradenitis, axillary; with simple or intermediate closure", "Stage II-III deroofing or excision");
@@ -6067,7 +6106,7 @@
     /* ── Graft Wound ───────────────────────────────────── */
     if (c.graftWound) {
       const stageVal = c.stageText;
-      const isDonor = stageVal.includes("donor");
+      const isDonor  = stageVal.includes("donor");
       const isFailed = stageVal.includes("failure") || stageVal.includes("failed");
       if (isDonor) {
         add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Donor site wound management");
@@ -6086,13 +6125,107 @@
       return suggestions;
     }
 
-    /* ── Debridement — depth-tiered ────────────────────── */
-    if (needsDebride) {
-      const stageText = c.stageText;
-      const isStage4 = stageText.includes("stage 4") || stageText.includes("stage iv");
-      const isStage3 = stageText.includes("stage 3") || stageText.includes("stage iii");
-      const fullThick = c.manualThickness === "full_thickness";
+    /* ── Pressure Injury ─────────────────────────────────── */
+    if (c.pressureRelated) {
+      if (isStage4) {
+        add("11044", "Debridement, bone; first 20 sq cm", "If bone involvement confirmed; use 11047 for each additional 20 sq cm");
+        add("11043", "Debridement, muscle and/or fascia; first 20 sq cm", "Use 11046 for each additional 20 sq cm");
+        add("97605", "NPWT dressing change ≤ 50 sq cm", "For stage 4 wound with significant cavity after surgical debridement");
+        add("97606", "NPWT dressing change > 50 sq cm");
+      } else if (isStage3 || isUnstageable) {
+        add("97597", "Active wound care management, selective debridement; first 20 sq cm");
+        add("97598", "Active wound care management, debridement; each additional 20 sq cm");
+        if (needsDebride && (depth >= 0.5 || isUnstageable)) {
+          add("11042", "Debridement, subcutaneous tissue; first 20 sq cm", "For deeper necrotic tissue; use 11045 for each additional 20 sq cm");
+          add("11045", "Debridement, subcutaneous tissue; each additional 20 sq cm");
+        }
+        if (depth >= 1.0 && c.cavityLikely) {
+          add("97605", "NPWT dressing change ≤ 50 sq cm", "For stage 3 with significant cavity or undermining");
+          add("97606", "NPWT dressing change > 50 sq cm");
+        }
+      } else {
+        /* Stage 1, Stage 2, DTI, or unspecified staging */
+        if (needsDebride) {
+          add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Only if necrotic tissue present");
+        }
+        add("97602", "Non-selective debridement, per session", "Autolytic/moisture balance for clean or early-stage pressure injury");
+      }
+      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; document pressure redistribution plan and support surface");
+      return suggestions;
+    }
 
+    /* ── Diabetic Foot Ulcer ──────────────────────────── */
+    if (c.diabeticFootRelated) {
+      if (c.osteomyelitisSignal) {
+        add("11044", "Debridement, bone; first 20 sq cm", "If bone involvement confirmed; use 11047 for each additional 20 sq cm");
+        add("11043", "Debridement, muscle and/or fascia; first 20 sq cm", "Use 11046 for each additional 20 sq cm");
+        add("20220", "Biopsy, bone, trocar or needle; superficial", "For bone culture to guide antibiotic selection before therapy");
+        add("97605", "NPWT dressing change ≤ 50 sq cm", "For post-debridement DFU; confirm adequate perfusion before applying NPWT");
+        add("97606", "NPWT dressing change > 50 sq cm");
+        add("99183", "Physician or other QHP supervision of hyperbaric oxygen therapy, per session");
+        add("G0277", "HBOT, pressure, full body; 30 minutes", "Facility code; 99183 is professional component");
+      } else if (needsDebride) {
+        add("97597", "Active wound care management, selective debridement; first 20 sq cm");
+        add("97598", "Active wound care management, debridement; each additional 20 sq cm");
+        if (depth >= 0.5 || fullThick) {
+          add("11042", "Debridement, subcutaneous tissue; first 20 sq cm", "For deeper necrotic tissue");
+          add("11045", "Debridement, subcutaneous tissue; each additional 20 sq cm");
+        }
+        if (depth >= 1.0 && c.cavityLikely) {
+          add("97605", "NPWT dressing change ≤ 50 sq cm", "For deep DFU with significant cavity; confirm adequate perfusion before NPWT");
+          add("97606", "NPWT dressing change > 50 sq cm");
+        }
+      } else {
+        add("97597", "Active wound care management, selective debridement; first 20 sq cm");
+        add("97602", "Non-selective debridement, per session", "Autolytic/moisture balance for clean DFU bed");
+      }
+      if (c.diabeticSuboptimal4WeekProgress || (c.stalled && !needsDebride)) {
+        add("15271", "Application of skin substitute graft; first 25 sq cm or less", "For DFU with suboptimal 4-week progress per Wagner/UT classification");
+        add("15272", "Application of skin substitute graft; each additional 25 sq cm");
+        add("Q4100–Q4299", "Skin substitute product HCPCS Q-code", "Bill appropriate Q-code for the specific CTP product applied");
+      }
+      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit");
+      return suggestions;
+    }
+
+    /* ── Arterial Ulcer ───────────────────────────────── */
+    if (c.arterialRelated && !c.venousRelated) {
+      add("93922", "Non-invasive physiologic studies of extremity arteries, bilateral", "ABI/TBI — obtain before debridement if not recently documented");
+      if (c.abiDocumented) {
+        add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Only after adequate perfusion confirmed; aggressive debridement risks limb loss");
+      } else {
+        add("97602", "Non-selective debridement, per session", "Conservative/autolytic approach pending vascular assessment");
+      }
+      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; vascular surgery referral billed separately");
+      return suggestions;
+    }
+
+    /* ── Venous Leg Ulcer (incl. mixed venous/arterial) ── */
+    if (c.venousRelated && !c.diabeticFootRelated && !c.pressureRelated) {
+      if (needsDebride) {
+        add("97597", "Active wound care management, selective debridement; first 20 sq cm");
+        add("97598", "Active wound care management, debridement; each additional 20 sq cm");
+      } else {
+        add("97602", "Non-selective debridement, per session", "Autolytic/moisture balance for clean venous ulcer bed");
+      }
+      if (!c.arterialRelated && !c.abiInadequateForCompression) {
+        add("29580", "Strapping; Unna boot");
+        add("29581", "Application of multi-layer compression system; leg (below knee)");
+        add("29582", "Application of multi-layer compression system; thigh and leg");
+      }
+      if (c.venousSuboptimal4WeekProgress || (c.stalled && !needsDebride)) {
+        add("15271", "Application of skin substitute graft; first 25 sq cm or less");
+        add("15272", "Application of skin substitute graft; each additional 25 sq cm");
+        add("Q4100–Q4299", "Skin substitute product HCPCS Q-code", "Bill appropriate Q-code for the specific CTP product applied");
+      }
+      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit");
+      return suggestions;
+    }
+
+    /* ── Generic / unclassified ─────────────────────────── */
+
+    /* Debridement — depth-tiered */
+    if (needsDebride) {
       if (c.osteomyelitisSignal || isStage4) {
         add("11044", "Debridement, bone; first 20 sq cm", "Use 11047 for each additional 20 sq cm");
         add("11043", "Debridement, muscle and/or fascia; first 20 sq cm", "Use 11046 each addl. 20 sq cm; bill separately if both tissue types debrided");
@@ -6109,40 +6242,26 @@
       }
     }
 
-    /* ── Non-selective debridement ─────────────────────── */
+    /* Non-selective debridement */
     if (slough >= 30 && !needsDebride) {
       add("97602", "Non-selective debridement (enzymatic, autolytic, wet-to-dry), per session");
     }
 
-    /* ── NPWT ──────────────────────────────────────────── */
-    if (c.osteomyelitisSignal || depth >= 1.0 || (c.cavityLikely && area >= 5)) {
+    /* NPWT — only for genuinely deep cavity wounds (not routine deep ulcers) */
+    if (depth >= 1.5 && c.cavityLikely && !c.venousRelated && !c.arterialRelated) {
       add("97605", "Negative pressure wound therapy (NPWT) dressing change ≤ 50 sq cm, per session");
       add("97606", "NPWT dressing change > 50 sq cm, per session");
       add("97607", "NPWT using durable medical equipment ≤ 50 sq cm", "Bill 97607/97608 when patient owns or rents the pump");
       add("97608", "NPWT using durable medical equipment > 50 sq cm");
     }
 
-    /* ── Compression ───────────────────────────────────── */
-    if (c.venousRelated && !c.arterialRelated && !c.abiInadequateForCompression) {
-      add("29580", "Strapping; Unna boot");
-      add("29581", "Application of multi-layer compression system; leg (below knee)");
-      add("29582", "Application of multi-layer compression system; thigh and leg");
-    }
-
-    /* ── Skin substitute (CTP) — stalled wounds ────────── */
-    if ((c.diabeticSuboptimal4WeekProgress || c.venousSuboptimal4WeekProgress) || (c.stalled && area > 0 && needsDebride === false)) {
-      add("15271", "Application of skin substitute graft, trunk/arms/legs; first 25 sq cm or less");
-      add("15272", "Application of skin substitute graft; each additional 25 sq cm (add-on to 15271)");
-      add("Q4100–Q4299", "Skin substitute product HCPCS Q-code", "Bill the appropriate Q-code for the specific CTP product applied");
-    }
-
-    /* ── HBOT ──────────────────────────────────────────── */
-    if (c.radiationWound || c.martorell || (c.diabeticFootRelated && c.osteomyelitisSignal) || (c.osteomyelitisWound && c.chronic)) {
+    /* HBOT — radiation wounds and chronic osteomyelitis */
+    if (c.radiationWound || (c.osteomyelitisWound && c.chronic)) {
       add("99183", "Physician or other QHP supervision of hyperbaric oxygen therapy, per session");
       add("G0277", "HBOT, pressure, full body; 30 minutes", "Facility code; 99183 is professional component");
     }
 
-    /* ── Wound care visit E&M fallback ─────────────────── */
+    /* Fallback E&M */
     if (!suggestions.length) {
       add("97597", "Active wound care management, selective debridement; first 20 sq cm");
       add("97602", "Non-selective debridement, per session");
