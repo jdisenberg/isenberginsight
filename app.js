@@ -7343,7 +7343,7 @@
         </label>
         <label class="manual-field">
           <span>Assessment Date</span>
-          ${manualInput("assessment_date", "date", "")}
+          ${manualInput("assessment_date", "date", "", `value="${escapeHtml(seed.assessment_date || todayLocalIso())}"`)}
         </label>
         <label class="manual-field">
           <span>Date Acquired</span>
