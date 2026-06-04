@@ -7999,12 +7999,39 @@
   function buildWoundScores(row) {
     const c = buildContext(row, null, row.manual_overrides || null);
     const out = [];
-    if (c.pressureRelated) out.push(scorePressureStaging(c, row));
+    if (c.pressureRelated) {
+      out.push(scorePressureStaging(c, row));
+      const pe = pushToScoreEntry(row);
+      if (pe) out.push(pe);
+    }
     if (c.diabeticFootRelated) { out.push(scoreWagner(c)); out.push(scoreTexas(c)); }
     if (c.isActive && !c.looksClosed) out.push(scoreInfection(c));
     const braden = scoreBraden(c.patientProfile);
     if (braden) out.push(braden);
     return out.filter(Boolean);
+  }
+
+  function pushToScoreEntry(row) {
+    const push = buildPUSHScore(row);
+    if (!push || !push.anyScored) return null;
+    const totalLabel = push.total != null ? `${push.total} / 17` : "— / 17 (incomplete)";
+    const interpretation = push.total == null ? "Enter area, exudate, and tissue type to complete the score." :
+      push.total === 0 ? "Score 0 — wound closed or healed." :
+      push.total <= 4  ? "Score 1–4 — minimal wound burden; monitor for full closure." :
+      push.total <= 9  ? "Score 5–9 — moderate wound burden; continue active treatment." :
+      push.total <= 13 ? "Score 10–13 — significant wound burden; intensify treatment and reassess plan." :
+                         "Score 14–17 — severe wound burden; aggressive intervention warranted.";
+    const items = push.subscores.map((s) => ({
+      label: s.label,
+      value: `${s.value != null ? s.value : "—"}/${s.max} · ${s.detail}`,
+    }));
+    return {
+      name: "PUSH Score (Pressure Ulcer Scale for Healing)",
+      value: totalLabel,
+      interpretation,
+      items,
+      note: "PUSH Tool © NPIAP. A decreasing score over time indicates a healing trajectory.",
+    };
   }
 
   function scorePressureStaging(c, row) {
@@ -8197,11 +8224,6 @@
           </details>`;
       }).filter(Boolean).join("");
 
-      const pushBlocks = patient.wounds
-        .map((row) => renderPUSHScoreHtml(buildPUSHScore(row)))
-        .filter(Boolean)
-        .join("");
-
       const scoreBlocks = patient.wounds
         .map((row) => renderWoundScoresHtml(buildWoundScores(row)))
         .filter(Boolean)
@@ -8215,7 +8237,6 @@
           </div>
           <p class="narrative-summary">${escapeHtml(fullNarrative)}</p>
           ${scoreBlocks}
-          ${pushBlocks}
           ${icd10Blocks || ""}
         </section>
       `;
