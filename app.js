@@ -295,12 +295,24 @@
     narrativeText: document.getElementById("narrativeText"),
     narrativeStyle: document.getElementById("narrativeStyle"),
     nameGateOverlay: document.getElementById("nameGateOverlay"),
-    nameGateForm: document.getElementById("nameGateForm"),
-    nameGateInput: document.getElementById("nameGateInput"),
-    nameGateClinicalAck: document.getElementById("nameGateClinicalAck"),
-    nameGateAgreeAck: document.getElementById("nameGateAgreeAck"),
+    authTitle: document.getElementById("authTitle"),
+    authLoginForm: document.getElementById("authLoginForm"),
+    authRegisterForm: document.getElementById("authRegisterForm"),
+    authForgotForm: document.getElementById("authForgotForm"),
+    loginUsername: document.getElementById("loginUsername"),
+    loginPassword: document.getElementById("loginPassword"),
+    loginError: document.getElementById("loginError"),
+    registerUsername: document.getElementById("registerUsername"),
+    registerEmail: document.getElementById("registerEmail"),
+    registerPassword: document.getElementById("registerPassword"),
+    registerPasswordConfirm: document.getElementById("registerPasswordConfirm"),
+    registerClinicalAck: document.getElementById("registerClinicalAck"),
+    registerAgreeAck: document.getElementById("registerAgreeAck"),
+    registerError: document.getElementById("registerError"),
+    forgotUsername: document.getElementById("forgotUsername"),
+    forgotError: document.getElementById("forgotError"),
+    forgotSuccess: document.getElementById("forgotSuccess"),
     nameGateTermsLink: document.getElementById("nameGateTermsLink"),
-    nameGateError: document.getElementById("nameGateError"),
     termsDialog: document.getElementById("termsDialog"),
     termsDialogClose: document.getElementById("termsDialogClose"),
     appRoot: document.getElementById("appRoot"),
@@ -310,6 +322,11 @@
     auditLogSummary: document.getElementById("auditLogSummary"),
     auditLogHead: document.querySelector("#auditLogTable thead"),
     auditLogBody: document.querySelector("#auditLogTable tbody"),
+    userAdminSection: document.getElementById("userAdminSection"),
+    userAdminRefresh: document.getElementById("userAdminRefresh"),
+    userAdminMeta: document.getElementById("userAdminMeta"),
+    userAdminHead: document.querySelector("#userAdminTable thead"),
+    userAdminBody: document.querySelector("#userAdminTable tbody"),
     previewPanel: document.getElementById("previewPanel"),
     printPacketButton: document.getElementById("printPacketButton"),
     previewHead: document.querySelector("#previewTable thead"),
@@ -332,7 +349,6 @@
     sourceMapBody: document.querySelector("#sourceMapTable tbody"),
     printPacketPanel: document.getElementById("printPacketPanel"),
     printPacketContent: document.getElementById("printPacketContent"),
-    backToTopButton: document.getElementById("backToTopButton"),
   };
 
   let latestOutputs = null;
@@ -729,13 +745,65 @@
     return "Ready. Enter wound details, then click Generate Considerations.";
   }
 
-  function setNameGateError(message = "") {
-    if (els.nameGateError) els.nameGateError.textContent = message;
+  /* ── Authentication ──────────────────────────────────────────────────── */
+
+  const AUTH_STORAGE_KEY = "CICATRIX_AUTH_V1";
+  let authState = null; /* { username, token, role, email } once signed in */
+
+  const AUTH_ERROR_MESSAGES = {
+    username_required: "Enter a username.",
+    username_too_short: "Username must be at least 3 characters.",
+    password_too_short: "Password must be at least 8 characters.",
+    terms_required: "You must accept the terms to register.",
+    username_taken: "That username is already taken.",
+    credentials_required: "Enter your username and password.",
+    invalid_credentials: "Incorrect username or password.",
+    not_authorized: "You are not authorized to do that.",
+    user_not_found: "That account no longer exists.",
+    cannot_delete_self: "You cannot delete the account you are signed in with.",
+    kv_not_configured: "Account service is not set up yet. Contact the administrator.",
+  };
+
+  function authErrorText(code) {
+    return AUTH_ERROR_MESSAGES[code] || "Something went wrong. Please try again.";
   }
 
-  function resetNameGateAcknowledgements() {
-    if (els.nameGateClinicalAck) els.nameGateClinicalAck.checked = false;
-    if (els.nameGateAgreeAck) els.nameGateAgreeAck.checked = false;
+  function loadStoredAuth() {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.username && parsed.token) return parsed;
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  function saveStoredAuth(obj) {
+    try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(obj)); } catch { /* ignore */ }
+  }
+
+  function clearStoredAuth() {
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch { /* ignore */ }
+  }
+
+  function isCurrentUserAdmin() {
+    return Boolean(authState && authState.role === "admin");
+  }
+
+  /** POST to /auth. Returns { ok, status, data, networkError }. */
+  async function authFetch(payload) {
+    try {
+      const res = await fetch("/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      let data = {};
+      try { data = await res.json(); } catch { /* non-JSON */ }
+      return { ok: res.ok && data.ok !== false, status: res.status, data, networkError: false };
+    } catch (err) {
+      return { ok: false, status: 0, data: {}, networkError: true };
+    }
   }
 
   function setAppAccessLocked(isLocked) {
@@ -751,21 +819,53 @@
         els.appRoot.removeAttribute("aria-hidden");
       }
     }
-    if (locked) setTimeout(() => els.nameGateInput?.focus(), 0);
+    if (locked) setTimeout(() => focusActiveAuthView(), 0);
   }
 
-  function initializeNameGate() {
-    const savedLabel = loadUserLabel();
-    if (els.nameGateInput) els.nameGateInput.value = savedLabel;
-    resetNameGateAcknowledgements();
-    if (!els.nameGateOverlay || !els.nameGateForm) {
-      setAppAccessLocked(false);
-      setNameGateError("");
-      return true;
-    }
-    setAppAccessLocked(true);
-    setNameGateError("");
-    return false;
+  function activeAuthView() {
+    if (els.authRegisterForm && !els.authRegisterForm.classList.contains("hidden")) return "register";
+    if (els.authForgotForm && !els.authForgotForm.classList.contains("hidden")) return "forgot";
+    return "login";
+  }
+
+  function focusActiveAuthView() {
+    const view = activeAuthView();
+    if (view === "register") els.registerUsername?.focus();
+    else if (view === "forgot") els.forgotUsername?.focus();
+    else els.loginUsername?.focus();
+  }
+
+  function showAuthView(view) {
+    const map = {
+      login: { form: els.authLoginForm, title: "Sign In" },
+      register: { form: els.authRegisterForm, title: "Create Account" },
+      forgot: { form: els.authForgotForm, title: "Reset Password" },
+    };
+    Object.values(map).forEach((m) => m.form && m.form.classList.add("hidden"));
+    const target = map[view] || map.login;
+    if (target.form) target.form.classList.remove("hidden");
+    if (els.authTitle) els.authTitle.textContent = target.title;
+    if (els.loginError) els.loginError.textContent = "";
+    if (els.registerError) els.registerError.textContent = "";
+    if (els.forgotError) els.forgotError.textContent = "";
+    if (els.forgotSuccess) els.forgotSuccess.textContent = "";
+    setTimeout(() => focusActiveAuthView(), 0);
+  }
+
+  function applyAuthSuccess(data, token) {
+    authState = {
+      username: data.username,
+      token,
+      role: data.role || "user",
+      email: data.email || "",
+    };
+    saveStoredAuth({ username: authState.username, token });
+    if (els.settingsUserLabel) els.settingsUserLabel.value = authState.username;
+    setAppAccessLocked(false);
+    if (els.userAdminSection) els.userAdminSection.classList.toggle("hidden", !isCurrentUserAdmin());
+    logUsageEvent("login", { user: authState.username, role: authState.role }, { cloud: true, local: true });
+    logSiteAccessOnce();
+    setStatus(readyStatusText());
   }
 
   function openTermsDialog(event) {
@@ -785,7 +885,7 @@
     if (!document.body.classList.contains("name-gate-active")) return;
     if (!els.nameGateOverlay || els.nameGateOverlay.contains(event.target)) return;
     event.stopPropagation();
-    els.nameGateInput?.focus();
+    focusActiveAuthView();
   }
 
   function logSiteAccessOnce() {
@@ -794,26 +894,227 @@
     logUsageEvent("site_access", { path: window.location.pathname || "/" });
   }
 
-  function handleNameGateSubmit(event) {
+  async function handleLoginSubmit(event) {
     event.preventDefault();
-    const previousLabel = loadUserLabel();
-    const saved = saveUserLabel(els.nameGateInput?.value || "");
-    if (!saved) {
-      setNameGateError("Enter your name to continue.");
-      els.nameGateInput?.focus();
+    if (els.loginError) els.loginError.textContent = "";
+    const username = String(els.loginUsername?.value || "").trim();
+    const password = String(els.loginPassword?.value || "");
+    if (!username || !password) {
+      if (els.loginError) els.loginError.textContent = "Enter your username and password.";
       return;
     }
-    if (!els.nameGateClinicalAck?.checked || !els.nameGateAgreeAck?.checked) {
-      setNameGateError("Review and check both acknowledgements to continue.");
-      if (!els.nameGateClinicalAck?.checked) els.nameGateClinicalAck?.focus();
-      else els.nameGateAgreeAck?.focus();
+    const submitBtn = els.authLoginForm?.querySelector("button[type=submit]");
+    if (submitBtn) submitBtn.disabled = true;
+    const res = await authFetch({ action: "login", username, password });
+    if (submitBtn) submitBtn.disabled = false;
+    if (res.ok) {
+      if (els.loginPassword) els.loginPassword.value = "";
+      applyAuthSuccess(res.data, res.data.token);
       return;
     }
-    setNameGateError("");
-    setAppAccessLocked(false);
-    logUsageEvent(previousLabel === saved ? "name_gate_completed" : "user_label_updated", { user_label: saved }, { cloud: false, local: true });
-    logSiteAccessOnce();
-    setStatus(readyStatusText());
+    if (res.networkError) {
+      if (els.loginError) els.loginError.textContent = "Network error — check your connection and try again.";
+      return;
+    }
+    if (els.loginError) els.loginError.textContent = authErrorText(res.data.error);
+  }
+
+  async function handleRegisterSubmit(event) {
+    event.preventDefault();
+    if (els.registerError) els.registerError.textContent = "";
+    const username = String(els.registerUsername?.value || "").trim();
+    const email = String(els.registerEmail?.value || "").trim();
+    const password = String(els.registerPassword?.value || "");
+    const confirm = String(els.registerPasswordConfirm?.value || "");
+
+    if (username.length < 3) {
+      els.registerError.textContent = "Username must be at least 3 characters.";
+      return;
+    }
+    if (password.length < 8) {
+      els.registerError.textContent = "Password must be at least 8 characters.";
+      return;
+    }
+    if (password !== confirm) {
+      els.registerError.textContent = "Passwords do not match.";
+      return;
+    }
+    if (!els.registerClinicalAck?.checked || !els.registerAgreeAck?.checked) {
+      els.registerError.textContent = "Check both acknowledgements to continue.";
+      return;
+    }
+    const submitBtn = els.authRegisterForm?.querySelector("button[type=submit]");
+    if (submitBtn) submitBtn.disabled = true;
+    const res = await authFetch({ action: "register", username, email, password, terms_accepted: true });
+    if (submitBtn) submitBtn.disabled = false;
+    if (res.ok) {
+      if (els.registerPassword) els.registerPassword.value = "";
+      if (els.registerPasswordConfirm) els.registerPasswordConfirm.value = "";
+      applyAuthSuccess(res.data, res.data.token);
+      return;
+    }
+    if (res.networkError) {
+      els.registerError.textContent = "Network error — check your connection and try again.";
+      return;
+    }
+    els.registerError.textContent = authErrorText(res.data.error);
+  }
+
+  async function handleForgotSubmit(event) {
+    event.preventDefault();
+    if (els.forgotError) els.forgotError.textContent = "";
+    if (els.forgotSuccess) els.forgotSuccess.textContent = "";
+    const username = String(els.forgotUsername?.value || "").trim();
+    if (!username) {
+      els.forgotError.textContent = "Enter your username.";
+      return;
+    }
+    const submitBtn = els.authForgotForm?.querySelector("button[type=submit]");
+    if (submitBtn) submitBtn.disabled = true;
+    const res = await authFetch({ action: "forgot", username });
+    if (submitBtn) submitBtn.disabled = false;
+    if (res.networkError) {
+      els.forgotError.textContent = "Network error — check your connection and try again.";
+      return;
+    }
+    els.forgotSuccess.textContent = "If that account exists, your administrator has been notified to reset it.";
+  }
+
+  /** On load: try to resume a stored session; otherwise lock to the login view. */
+  async function initializeAuth() {
+    if (!els.nameGateOverlay || !els.authLoginForm) {
+      /* Auth UI missing — fail open so the app is still usable */
+      setAppAccessLocked(false);
+      return true;
+    }
+    const stored = loadStoredAuth();
+    setAppAccessLocked(true);
+    showAuthView("login");
+    if (!stored) return false;
+
+    const res = await authFetch({ action: "verify", username: stored.username, token: stored.token });
+    if (res.ok) {
+      applyAuthSuccess(res.data, stored.token);
+      return true;
+    }
+    if (res.networkError) {
+      /* Backend unreachable but we have a cached session — trust it so a
+         transient outage doesn't lock the user out. */
+      authState = { username: stored.username, token: stored.token, role: stored.role || "user", email: "" };
+      setAppAccessLocked(false);
+      if (els.userAdminSection) els.userAdminSection.classList.toggle("hidden", !isCurrentUserAdmin());
+      logSiteAccessOnce();
+      setStatus(readyStatusText());
+      return true;
+    }
+    /* Session rejected (expired/invalid) — clear it and show login */
+    clearStoredAuth();
+    return false;
+  }
+
+  /* ── Admin: user management (audit page) ─────────────────────────────── */
+
+  function adminCreds() {
+    return { admin_username: authState?.username || "", admin_token: authState?.token || "" };
+  }
+
+  async function loadUserAdmin() {
+    if (!isCurrentUserAdmin() || !els.userAdminBody) return;
+    if (els.userAdminMeta) els.userAdminMeta.textContent = "Loading accounts…";
+    const res = await authFetch({ action: "admin_list", ...adminCreds() });
+    if (!res.ok) {
+      if (els.userAdminMeta) {
+        els.userAdminMeta.textContent = res.networkError
+          ? "Could not reach the account service."
+          : authErrorText(res.data.error);
+      }
+      return;
+    }
+    renderUserAdmin(res.data.users || []);
+  }
+
+  function renderUserAdmin(users) {
+    if (!els.userAdminBody || !els.userAdminHead) return;
+    const flagged = users.filter((u) => u.needs_password_reset).length;
+    if (els.userAdminMeta) {
+      els.userAdminMeta.textContent = `${users.length} account${users.length === 1 ? "" : "s"}` +
+        (flagged ? ` · ${flagged} awaiting password reset` : "");
+    }
+    els.userAdminHead.innerHTML =
+      "<tr><th>Username</th><th>Role</th><th>Email</th><th>Created</th><th>Last Login</th><th>Status</th><th>Actions</th></tr>";
+    if (!users.length) {
+      els.userAdminBody.innerHTML = '<tr><td colspan="7">No accounts registered yet.</td></tr>';
+      return;
+    }
+    els.userAdminBody.innerHTML = users.map((u) => {
+      const flaggedRow = u.needs_password_reset ? ' class="user-flagged"' : "";
+      const status = u.needs_password_reset
+        ? `<span class="user-badge user-badge-warn">Reset requested${u.reset_requested_at ? " · " + escapeHtml(formatAuditTimestamp(u.reset_requested_at)) : ""}</span>`
+        : '<span class="user-badge">Active</span>';
+      const roleBtn = u.role === "admin" ? "Make User" : "Make Admin";
+      const uname = escapeHtml(u.username);
+      return `<tr${flaggedRow}>
+        <td>${uname}</td>
+        <td>${escapeHtml(u.role || "user")}</td>
+        <td>${escapeHtml(u.email || "—")}</td>
+        <td>${escapeHtml(formatAuditTimestamp(u.created_at) || "—")}</td>
+        <td>${escapeHtml(formatAuditTimestamp(u.last_login_at) || "—")}</td>
+        <td>${status}</td>
+        <td class="user-actions">
+          <button type="button" data-user-action="reset" data-user="${uname}">Reset Password</button>
+          <button type="button" data-user-action="role" data-user="${uname}" data-role="${escapeHtml(u.role || "user")}">${roleBtn}</button>
+          <button type="button" data-user-action="rename" data-user="${uname}">Rename</button>
+          <button type="button" data-user-action="email" data-user="${uname}">Edit Email</button>
+          <button type="button" data-user-action="delete" data-user="${uname}" class="user-danger">Delete</button>
+        </td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function handleUserAdminAction(action, username, extra = {}) {
+    const res = await authFetch({ action, target: username, ...extra, ...adminCreds() });
+    if (res.ok) {
+      logUsageEvent("admin_user_action", { sub_action: action, target: username }, { cloud: true, local: true });
+      await loadUserAdmin();
+      setStatus(`Account "${username}" updated.`);
+      return true;
+    }
+    const msg = res.networkError ? "Network error — try again." : authErrorText(res.data.error);
+    setStatus(msg);
+    window.alert(msg);
+    return false;
+  }
+
+  async function onUserAdminClick(event) {
+    const btn = event.target.closest("[data-user-action]");
+    if (!btn) return;
+    const action = btn.dataset.userAction;
+    const username = btn.dataset.user;
+    if (!username) return;
+
+    if (action === "reset") {
+      const pw = window.prompt(`Enter a new password for "${username}" (8+ characters):`);
+      if (pw == null) return;
+      if (pw.length < 8) { window.alert("Password must be at least 8 characters."); return; }
+      await handleUserAdminAction("admin_reset", username, { new_password: pw });
+    } else if (action === "role") {
+      const newRole = btn.dataset.role === "admin" ? "user" : "admin";
+      if (!window.confirm(`Change "${username}" to role "${newRole}"?`)) return;
+      await handleUserAdminAction("admin_update", username, { role: newRole });
+    } else if (action === "rename") {
+      const newName = window.prompt(`New username for "${username}":`, username);
+      if (newName == null) return;
+      const trimmed = newName.trim();
+      if (trimmed.length < 3) { window.alert("Username must be at least 3 characters."); return; }
+      await handleUserAdminAction("admin_update", username, { new_username: trimmed });
+    } else if (action === "email") {
+      const email = window.prompt(`Email for "${username}":`, "");
+      if (email == null) return;
+      await handleUserAdminAction("admin_update", username, { email: email.trim() });
+    } else if (action === "delete") {
+      if (!window.confirm(`Permanently delete account "${username}"? This cannot be undone.`)) return;
+      await handleUserAdminAction("admin_delete", username);
+    }
   }
 
 
@@ -889,6 +1190,7 @@
   }
 
   function resolveAuditActor() {
+    if (authState && authState.username) return authState.username;
     const direct = String(window.WOUND_HISTORY_ACTOR || "").trim();
     if (direct) return direct;
     const savedLabel = loadUserLabel();
@@ -3489,9 +3791,24 @@
 
     if (c.traumaticWound) {
       const isBite = c.woundTypeText.includes("bite");
+      const loc = c.locationText || "";
+      const isHand = loc.includes("hand") || loc.includes("finger") || loc.includes("digit") || loc.includes("thumb") || loc.includes("wrist");
+      const isFace = loc.includes("face") || loc.includes("cheek") || loc.includes("lip") || loc.includes("forehead") || loc.includes("chin") || loc.includes("nose") || loc.includes("scalp") || loc.includes("eyelid") || loc.includes("periorbital");
+      const isFoot = loc.includes("foot") || loc.includes("plantar") || loc.includes("toe") || loc.includes("ankle") || loc.includes("heel");
+
+      add("high", "Traumatic Wound — Neurovascular & Depth Assessment", "Assess neurovascular status: sensation, 2-point discrimination (≤ 6 mm normal in fingertip), capillary refill (< 2 sec), distal pulses. Document wound depth and identify any exposed tendon, fascia, bone, or joint capsule. High-energy mechanisms (crush, blast, MVA): screen for compartment syndrome — pain with passive stretch, tense compartment, paresthesias; compartment pressure > 30 mmHg is surgical emergency.", "Depth assessment determines closure feasibility and referral urgency. Tendon and joint involvement require operative evaluation. Compartment syndrome can develop hours after injury — normal pulses do NOT exclude it. Missing a partial tendon laceration leads to delayed rupture.", "Document explicitly: sensation intact Y/N; capillary refill Y/N; deep structures identified Y/N; mechanism; time of injury.");
       add("high", "Traumatic Wound — Foreign Body", "Assess for retained foreign body: probe wound gently; X-ray if metallic/glass suspected; ultrasound or MRI for organic material (wood/plastic)", "Retained foreign bodies are the most common cause of traumatic wound infection and non-healing. Metallic objects are visible on plain X-ray; organic material requires ultrasound or MRI.", "Document foreign body assessment explicitly; if not ruled out, obtain imaging before closure.");
       add("high", "Traumatic Wound — Tetanus", "Verify tetanus prophylaxis: immune status + wound type + time since last booster — give Td/Tdap/TIG per current CDC protocol", "Clean minor wounds: Td if > 10 years. Dirty/contaminated wounds: Td if > 5 years. Unimmunized or unknown status: Td + TIG. Incomplete DTaP series: refer.", "Document immunization status and prophylaxis given; consult CDC tetanus guidelines for full decision tree.");
       add("high", "Traumatic Wound — Irrigation", "Irrigate copiously with normal saline under pressure (9-12 psi); minimum 50-100 mL per cm of wound depth", "High-pressure saline irrigation significantly reduces bacterial load. Bulb syringe is inadequate; use 18G angiocath on 35 mL syringe or irrigation shield.", "Do NOT use hydrogen peroxide, betadine, or Dakin solution for primary irrigation of fresh traumatic wounds — cytotoxic to viable tissue; normal saline is preferred.");
+      if (isHand) {
+        add("high", "Hand / Digit Wound — Specialty Referral", "Test each digit: active FDP flexion (DIP), FDS flexion (PIP with adjacent digits blocked), 2-point discrimination, capillary refill. Clenched-fist injuries over MCP joints (fight bites) are joint space contamination until proven otherwise — require operative irrigation. Partial flexor tendon lacerations are typically non-operative in the field; refer urgently for tendon exploration under tourniquet control.", "Partial flexor tendon lacerations appear functional but rupture with minimal force if untreated. Digital nerve injuries carry best prognosis with microsurgical repair within 72 hours. Fight bite MCP joint infections rapidly destroy cartilage.", "Splint in position of safe immobilization (intrinsic-plus: 70° MCP flexion, full IP extension, thumb abducted); do not attempt tendon repair outside OR; expedite hand surgery or orthopedic referral.");
+      }
+      if (isFace) {
+        add("medium", "Facial Wound — Closure & Anatomic Landmarks", "Facial wounds can be closed up to 24 hours after injury (superior vascularity). Meticulous layered closure: dermis with absorbable 4-0, skin with 5-0 monofilament or fast-absorbing gut. Assess anatomic landmarks: parotid duct (deep cheek, level with ear tragus), facial nerve branches (test all 5 before closure), lacrimal duct (medial canthal wounds). Eyelid/periorbital injuries: ophthalmology consult. Scalp lacerations: staples acceptable; hemostasis critical (galea aponeurotic bleeds briskly).", "1 mm misalignment at the lip vermillion border or eyebrow is cosmetically visible. Facial nerve injury in cheek lacerations: if lateral to a vertical line through lateral canthus — medial branches have redundant innervation; lateral branches require exploration. Parotid duct injury: apply pressure to parotid, look for clear fluid in wound.", "Mark anatomic landmarks (vermillion border, eyebrow hairs) with ink before injecting local anesthetic — lidocaine distorts landmarks. Eyelid wounds may need lacrimal stenting — do not close blindly.");
+      }
+      if (isFoot) {
+        add("medium", "Foot Wound — Imaging & Vascular Assessment", "Obtain plain X-ray: metatarsal fracture, Lisfranc injury, glass/metallic foreign body, occult cortical break. Assess vascular status (pedal pulses, ABI if concern). Plantar puncture wounds through shoe sole carry high Pseudomonas aeruginosa osteomyelitis risk — wound exploration ± ciprofloxacin for moderate/deep wounds. Diabetic foot: heightened infection risk, impaired healing, neuropathy masks pain — low threshold for imaging, culture, and broad-spectrum antibiotics.", "Lisfranc injuries are commonly missed on initial X-ray; weight-bearing films improve sensitivity. Pseudomonas plantar osteomyelitis typically presents 7-14 days post-injury with persistent plantar pain — MRI is gold standard. Diabetic patients can develop rapid-onset osteomyelitis with minimal external signs.", "Provide crutches/offloading; ensure tetanus current; document pedal pulses; if diabetic, document ABI and neurovascular baseline.");
+      }
       if (isBite) {
         add("high", "Bite Wound", "Human bites: amoxicillin-clavulanate; delayed closure; report per jurisdiction. Dog bites: amoxicillin-clavulanate; primary closure if clean and < 8 hours. Cat bites: antibiotics always; usually delayed closure (high Pasteurella risk).", "Cat bite infection rate 30-50%. Human bites to dorsum of hand (clenched-fist) risk deep space infection and tendon sheath involvement — orthopedic/hand surgery consult.", "Assess rabies risk; report to public health per jurisdiction; X-ray joints near bite wounds for tooth fragment or fracture.");
       } else {
@@ -3503,10 +3820,14 @@
 
     if (c.fistulaWound) {
       add("high", "Fistula — Output Classification", "Measure daily output: Low < 200 mL/day (dressings adequate), Moderate 200-500 mL/day (pouching system), High > 500 mL/day (pouching + IV support ± somatostatin analog)", "Output volume drives the entire management strategy. High-output ECFs cause rapid protein, fluid, and electrolyte depletion — can become life-threatening. Early classification prevents underestimation.", "Weigh soiled pouching system; document output character (enteric = brown/odorous, pancreatic = watery/clear, biliary = green/yellow-brown); record daily volumes.");
+      add("high", "Fistula — Type Identification (Enteric / Pancreatic / Biliary)", "Classify type from output character and lab testing: Enteric/small bowel — brown/odorous, high enzyme activity, increases with oral intake. Pancreatic — watery and clear; send fistula fluid for amylase (> 3× serum amylase confirms pancreatic origin). Biliary — green to yellow-brown; send for bilirubin (elevated confirms biliary source). Mixed presentations require CT fistulography or contrast upper GI series to define tract anatomy.", "Type determines pharmacologic strategy: pancreatic fistulas respond best to somatostatin analogs + bowel rest; biliary fistulas may be managed with ERCP + stenting to divert bile; enteric fistulas often require TPN + NPO to reduce luminal output. Misidentification leads to wrong treatment. Urinoma mimics biliary — send for creatinine to exclude.", "CT with fistulography or sinogram to define tract: entry point, length, epithelialization, connection to bowel. Report: volume, character, lab results, tract anatomy to GI/surgery at referral.");
       add("high", "Fistula — Skin Protection", "Pouching system (convex or flat wafer with barrier ring) is superior to dressings for moderate/high output. Apply extended-wear barrier (cyanoacrylate film, Cavilon, zinc oxide paste) for low output.", "Intestinal effluent contains active digestive enzymes causing rapid, painful skin breakdown. Pouching contains output, protects skin, and enables accurate output measurement.", "CWOCN (certified wound/ostomy nurse) consultation strongly recommended for pouch fitting; proper skin prep and wafer adhesion critical to prevent leakage and breakdown.");
-      add("high", "Fistula — Nutrition", "Urgent dietitian consult: assess protein, caloric, fluid, electrolyte needs. Target 1.5-2.5 g/kg/day protein. Consider enteral supplementation or TPN for high-output/complex fistulas.", "High-output ECFs cause significant protein and electrolyte losses. Malnutrition is the primary factor impairing spontaneous fistula closure. Parenteral nutrition may be required to rest the bowel.", "Monitor daily electrolytes in high-output cases; supplement zinc, magnesium, vitamins; GI/surgery/nutrition team involvement essential.");
-      add("medium", "Fistula — Spontaneous Closure", "Assess SNAP factors for closure potential: Sepsis (active infection), Nutrition (malnutrition), Anatomy (radiation, distal obstruction, foreign body, short/epithelialized tract), Plan. Absence of SNAP factors: 30-90 day spontaneous closure likely.", "SNAP criteria predict failure to close spontaneously. Optimizing correctable SNAP factors before surgery improves operative outcomes and may allow spontaneous closure.", "Surgical consultation for cases unlikely to close spontaneously, or after 8-12 weeks of optimal conservative management.");
-      add("medium", "Fistula — Infection", "Culture fistula output; treat associated abscess or cellulitis aggressively; CT scan if deep abscess suspected", "Peri-fistula sepsis is the primary cause of fistula-related mortality. Abscess must be drained before spontaneous closure can occur.", "Broad-spectrum antibiotic coverage initially; de-escalate per culture; drain any fluctuant or CT-confirmed abscess urgently.");
+      add("high", "Fistula — Nutrition & Electrolyte Replacement", "Urgent dietitian consult: assess protein, caloric, fluid, and electrolyte needs. Target 1.5-2.5 g/kg/day protein; 25-35 kcal/kg/day total. Enteral nutrition via tube placed distal to fistula is preferred over TPN when feasible — preserves gut mucosa, reduces infection risk, lower cost. TPN indications: proximal small bowel fistula increasing output with enteral feeds, distal obstruction, hemodynamic instability.", "High-output ECFs cause significant losses of sodium, potassium, bicarbonate, magnesium, and zinc. Malnutrition is the primary factor impairing spontaneous fistula closure — albumin < 2.5 g/dL predicts failure. Enteral nutrition is NOT contraindicated in all fistulas — only when feeding worsens output or bowel rest is required for type-specific reasons.", "Monitor daily electrolytes and replace aggressively. Supplement: zinc 25-40 mg/day (critical for wound healing), magnesium IV if < 1.5 mg/dL, B12 if distal ileum involved. Document albumin/pre-albumin weekly as nutritional marker.");
+      add("high", "Fistula — Bowel Rest / NPO Criteria", "Initiate NPO + TPN for: (1) High-output ECF (> 500 mL/day) not controlled by dietary modification; (2) Proximal small bowel or pancreatic fistula where oral/enteral feeding directly increases output; (3) Distal bowel obstruction requiring decompression. Confirm TPN requires central venous access (PICC or tunneled catheter). Target glucose 140-180 mg/dL.", "Bowel rest reduces pancreatic and intestinal secretions; combined with somatostatin may increase spontaneous closure rate. TPN is NOT beneficial for colonic fistulas (output is bacterial, not secretory). Duration of bowel rest should be re-evaluated weekly — prolonged NPO causes gut mucosal atrophy and bacterial translocation.", "Monitor for TPN complications: CLABSI (daily line site inspection), hyperglycemia, hypertriglyceridemia, hepatic dysfunction (LFTs weekly). Begin transition to enteral/oral as soon as output falls below threshold.");
+      add("medium", "Fistula — Somatostatin Analog (Octreotide)", "For high-output pancreatic or proximal small bowel fistulas: Octreotide 100-200 mcg SC TID or 25-50 mcg/hr continuous IV infusion. Measure daily output — expect 30-50% reduction within 48-72 hours if response will occur. Lanreotide LAR 120 mg IM monthly for prolonged therapy. Discontinue if no ≥ 50% output reduction after 72 hours.", "Somatostatin analogs inhibit secretin, CCK, and gastrin; reduce pancreatic, gastric, and intestinal secretions. Meta-analyses (Hernandez-Aranda 1996, Sancho et al.) show faster time-to-closure for pancreatic fistulas but inconsistent effect on overall closure rate. Most effective when initiated within 48 hours of fistula identification.", "Monitor blood glucose — somatostatin inhibits both insulin and glucagon; hypoglycemia and hyperglycemia both possible. Not indicated for colonic fistulas. Insurance/formulary: lanreotide may require prior authorization; octreotide is widely available and first-line.");
+      add("medium", "Fistula — Spontaneous Closure (SNAP Assessment)", "Assess SNAP factors for closure potential: Sepsis (active uncontrolled infection), Nutrition (malnutrition, albumin < 2.5), Anatomy (radiation damage, distal obstruction, foreign body in tract, short tract < 2 cm, fully epithelialized tract), Plan (no plan for surgical source control). Absence of SNAP barriers: 30-90 day spontaneous closure expected in 60-70% of ECFs with optimal conservative management.", "SNAP criteria predict failure to close spontaneously. Optimizing correctable SNAP factors (draining sepsis, restoring nutrition, relieving partial distal obstruction endoscopically) before surgery significantly improves operative outcomes and may enable spontaneous closure that would otherwise fail.", "Surgical consultation should be made early even if conservative management is ongoing — complex fistulas need multidisciplinary planning (surgery, GI, nutrition, CWOCN). Document referral made.");
+      add("medium", "Fistula — Infection Control", "Culture fistula output; treat associated abscess or cellulitis aggressively; CT scan if deep abscess suspected", "Peri-fistula sepsis is the primary cause of fistula-related mortality. Abscess must be drained (percutaneously or surgically) before spontaneous closure can occur — pus prevents re-epithelialization.", "Broad-spectrum antibiotic coverage initially; de-escalate per culture and sensitivities; drain any fluctuant or CT-confirmed abscess urgently. Treat perifistula cellulitis with IV antibiotics if systemically ill.");
+      add("medium", "Fistula — Surgical Timing & Indications", "Urgent/emergent surgery: hemodynamic instability from uncontrolled sepsis, bowel ischemia, or distal obstruction not amenable to endoscopic management. Elective surgery timing: after 8-12 weeks of optimized conservative management, with albumin > 3.0 g/dL, pre-albumin > 16 mg/dL, and source sepsis controlled. Biliary fistulas: ERCP with sphincterotomy ± stenting can divert bile and facilitate closure without laparotomy.", "Operating on an acutely inflamed, poorly nourished patient dramatically increases anastomotic leak rate (> 40% if albumin < 2.5) and operative mortality. Dense adhesions from prior surgery + fistula inflammation make re-operation technically high-risk — experienced colorectal or hepatobiliary surgeon essential. Timing after previous laparotomy: minimum 3-6 months to allow adhesion maturation.", "Confirm all SNAP barriers addressed before scheduling elective repair. Obtain cross-sectional imaging (CT with contrast) immediately pre-operatively to define anatomy. Bowel prep per surgeon preference. ICU-level post-operative monitoring if high-output or complex fistula.");
       return finalize(out);
     }
 
@@ -7060,54 +7381,57 @@
         </label>
       </div>
       <div data-tissue-alert class="tissue-pct-alert"></div>
-      <div class="manual-grid manual-prior">
-        <label class="manual-field">
-          <span>Diabetic</span>
-          ${manualSelect([{ value: "", label: "Not set" }, { value: "yes", label: "Yes" }, { value: "no", label: "No" }], "diabetic", selected.diabetic)}
-        </label>
-        <label class="manual-field">
-          <span>Thickness of Wound</span>
-          ${manualSelect(OVERRIDE_THICKNESS_OPTIONS, "thickness", selected.thickness)}
-        </label>
-        <label class="manual-field">
-          <span>Exudate Amount</span>
-          ${manualSelect(OVERRIDE_EXUDATE_AMOUNT_OPTIONS, "exudate_amount", selected.exudate_amount)}
-        </label>
-        <label class="manual-field">
-          <span>Exudate Type</span>
-          ${manualSelect(OVERRIDE_EXUDATE_TYPE_OPTIONS, "exudate_type", selected.exudate_type)}
-        </label>
-        <label class="manual-field">
-          <span>Odor</span>
-          ${manualSelect(OVERRIDE_ODOR_OPTIONS, "odor", selected.odor)}
-        </label>
-        <label class="manual-field">
-          <span>Tunneling</span>
-          ${manualSelect(MANUAL_TUNNELING_OPTIONS, "tunneling", "")}
-        </label>
-        <label class="manual-field">
-          <span>Undermining</span>
-          ${manualSelect(MANUAL_UNDERMINING_OPTIONS, "undermining", "")}
-        </label>
-        <label class="manual-field">
-          <span>Periwound Skin</span>
-          ${manualSelect(MANUAL_PERIWOUND_OPTIONS, "periwound_condition", seed.periwound_condition || "")}
-        </label>
-        <label class="manual-field">
-          <span>ABI / Perfusion (leg ulcers)</span>
-          ${manualSelect(MANUAL_ABI_OPTIONS, "abi_range", seed.abi_range || "")}
-        </label>
-      </div>
-      <div class="manual-grid manual-prior">
-        <div class="manual-check-section">
-          <h4>Exposed Structures</h4>
-          ${buildManualChecklist("exposed_structures", OVERRIDE_EXPOSED_STRUCTURE_OPTIONS, selected.exposed_structures)}
+      <details class="manual-prior manual-clinical-details">
+        <summary>Clinical Details <span class="manual-details-hint">(wound characteristics, infection flags)</span></summary>
+        <div class="manual-grid manual-prior">
+          <label class="manual-field">
+            <span>Diabetic</span>
+            ${manualSelect([{ value: "", label: "Not set" }, { value: "yes", label: "Yes" }, { value: "no", label: "No" }], "diabetic", selected.diabetic)}
+          </label>
+          <label class="manual-field">
+            <span>Thickness of Wound</span>
+            ${manualSelect(OVERRIDE_THICKNESS_OPTIONS, "thickness", selected.thickness)}
+          </label>
+          <label class="manual-field">
+            <span>Exudate Amount</span>
+            ${manualSelect(OVERRIDE_EXUDATE_AMOUNT_OPTIONS, "exudate_amount", selected.exudate_amount)}
+          </label>
+          <label class="manual-field">
+            <span>Exudate Type</span>
+            ${manualSelect(OVERRIDE_EXUDATE_TYPE_OPTIONS, "exudate_type", selected.exudate_type)}
+          </label>
+          <label class="manual-field">
+            <span>Odor</span>
+            ${manualSelect(OVERRIDE_ODOR_OPTIONS, "odor", selected.odor)}
+          </label>
+          <label class="manual-field">
+            <span>Tunneling</span>
+            ${manualSelect(MANUAL_TUNNELING_OPTIONS, "tunneling", "")}
+          </label>
+          <label class="manual-field">
+            <span>Undermining</span>
+            ${manualSelect(MANUAL_UNDERMINING_OPTIONS, "undermining", "")}
+          </label>
+          <label class="manual-field">
+            <span>Periwound Skin</span>
+            ${manualSelect(MANUAL_PERIWOUND_OPTIONS, "periwound_condition", seed.periwound_condition || "")}
+          </label>
+          <label class="manual-field">
+            <span>ABI / Perfusion (leg ulcers)</span>
+            ${manualSelect(MANUAL_ABI_OPTIONS, "abi_range", seed.abi_range || "")}
+          </label>
         </div>
-        <div class="manual-check-section">
-          <h4>Signs/Symptoms of Infection</h4>
-          ${buildManualChecklist("infection_signs", OVERRIDE_INFECTION_SIGN_OPTIONS, selected.infection_signs)}
+        <div class="manual-grid manual-prior">
+          <div class="manual-check-section">
+            <h4>Exposed Structures</h4>
+            ${buildManualChecklist("exposed_structures", OVERRIDE_EXPOSED_STRUCTURE_OPTIONS, selected.exposed_structures)}
+          </div>
+          <div class="manual-check-section">
+            <h4>Signs/Symptoms of Infection</h4>
+            ${buildManualChecklist("infection_signs", OVERRIDE_INFECTION_SIGN_OPTIONS, selected.infection_signs)}
+          </div>
         </div>
-      </div>
+      </details>
       <details class="manual-prior">
         <summary>Optional prior measurement for this wound</summary>
         <div class="manual-grid manual-prior">
@@ -7528,8 +7852,17 @@
     renderSuppliesPanel();
     try { renderSources(); } catch (err) { console.error("[Cicatrix] renderSources failed:", err); }
     try { ensureManualWoundCard(); } catch (err) { console.error("[Cicatrix] ensureManualWoundCard failed:", err); }
-    if (els.nameGateForm) {
-      els.nameGateForm.addEventListener("submit", handleNameGateSubmit);
+    if (els.authLoginForm) els.authLoginForm.addEventListener("submit", handleLoginSubmit);
+    if (els.authRegisterForm) els.authRegisterForm.addEventListener("submit", handleRegisterSubmit);
+    if (els.authForgotForm) els.authForgotForm.addEventListener("submit", handleForgotSubmit);
+    if (els.nameGateOverlay) {
+      els.nameGateOverlay.addEventListener("click", (event) => {
+        const navLink = event.target.closest("[data-auth-nav]");
+        if (navLink) {
+          event.preventDefault();
+          showAuthView(navLink.dataset.authNav);
+        }
+      });
     }
     if (els.nameGateTermsLink) {
       els.nameGateTermsLink.addEventListener("click", openTermsDialog);
@@ -7541,7 +7874,7 @@
       if (event.key === "Escape" && els.termsDialog && !els.termsDialog.hidden) closeTermsDialog();
     });
     document.addEventListener("focusin", guardNameGateFocus);
-    if (initializeNameGate()) logSiteAccessOnce();
+    initializeAuth();
     if (els.narrativeStyle) {
       els.narrativeStyle.addEventListener("change", (event) => {
         saveNarrativeStyle(event.target.value);
@@ -7609,15 +7942,22 @@
         els.auditLogPanel.classList.remove("hidden");
         els.auditLogPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       }
+      /* Admin-only user management */
+      if (els.userAdminSection) {
+        const admin = isCurrentUserAdmin();
+        els.userAdminSection.classList.toggle("hidden", !admin);
+        if (admin) loadUserAdmin();
+      }
       /* Then load remote */
       await loadRemoteAuditLog();
     };
 
-    const updateBackToTopVisibility = () => {
-      if (!els.backToTopButton) return;
-      const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
-      els.backToTopButton.classList.toggle("is-visible", scrollY > 260);
-    };
+    if (els.userAdminRefresh) {
+      els.userAdminRefresh.addEventListener("click", () => loadUserAdmin());
+    }
+    if (els.userAdminBody) {
+      els.userAdminBody.addEventListener("click", onUserAdminClick);
+    }
 
     if (els.settingsButton) {
       els.settingsButton.addEventListener("click", (e) => {
@@ -7820,15 +8160,7 @@
         openPrintPacket();
       });
     }
-    if (els.backToTopButton) {
-      els.backToTopButton.addEventListener("click", () => {
-        const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
-      });
-    }
-    window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
     window.addEventListener("afterprint", exitPrintPacketMode);
-    updateBackToTopVisibility();
 
     els.analyzeForm.addEventListener("submit", analyzeReport);
 
