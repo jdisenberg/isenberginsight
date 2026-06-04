@@ -2158,36 +2158,32 @@ body.name-gate-active {
 
 /* ── Wound Photo Analyzer ───────────────────────────────────────────────── */
 
-/* Button on wound card */
-.az-card-btn-row {
+/* Header action group on wound card */
+.manual-wound-head-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0 4px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .az-analyze-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 700;
-  padding: 6px 14px;
+  padding: 6px 13px;
   border-radius: 8px;
-  border: 1.5px solid #6b1f2a;
-  background: #fff;
-  color: #6b1f2a;
+  border: 1.5px solid var(--accent);
+  background: #fdf3ef;
+  color: var(--accent);
   cursor: pointer;
-  transition: background 80ms, color 80ms;
+  transition: background 90ms ease, color 90ms ease;
   white-space: nowrap;
+  box-shadow: none;
 }
-.az-analyze-btn:hover { background: #6b1f2a; color: #fff; }
-
-.az-card-btn-hint {
-  font-size: 0.74rem;
-  color: #7a8fa0;
-  font-style: italic;
-}
+.az-analyze-btn:hover { background: var(--accent); color: #fff; }
+.az-analyze-btn:active { transform: translateY(1px); }
 
 /* Modal overlay */
 .wound-analyzer-overlay {
@@ -2198,16 +2194,17 @@ body.name-gate-active {
   place-items: safe center;
   padding: 16px;
   overflow-y: auto;
-  background: rgba(10, 24, 34, 0.72);
-  backdrop-filter: blur(6px);
+  background: rgba(42, 15, 22, 0.55);
+  backdrop-filter: blur(7px);
 }
 .wound-analyzer-overlay[hidden] { display: none !important; }
 
 .wound-analyzer-card {
   width: min(100%, 760px);
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.38);
+  background: linear-gradient(180deg, #fffdfc, var(--paper-soft));
+  border-radius: 18px;
+  border: 1px solid rgba(107, 31, 42, 0.2);
+  box-shadow: 0 28px 70px rgba(42, 15, 22, 0.34);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2219,7 +2216,7 @@ body.name-gate-active {
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px 12px;
-  background: #1b3a4b;
+  background: var(--accent);
   color: #fff;
 }
 
@@ -2233,21 +2230,22 @@ body.name-gate-active {
 .az-close {
   background: none;
   border: none;
-  color: rgba(255,255,255,0.75);
+  color: rgba(255, 255, 255, 0.78);
   font-size: 1.1rem;
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 6px;
   line-height: 1;
+  box-shadow: none;
 }
-.az-close:hover { color: #fff; background: rgba(255,255,255,0.15); }
+.az-close:hover { color: #fff; background: rgba(255, 255, 255, 0.18); }
 
 /* Step indicator */
 .az-steps {
   display: flex;
   gap: 0;
-  background: #eef4f8;
-  border-bottom: 1px solid #d0dde5;
+  background: #fdf3ef;
+  border-bottom: 1px solid var(--line);
 }
 
 .az-step-dot {
@@ -2256,13 +2254,13 @@ body.name-gate-active {
   padding: 8px 4px;
   font-size: 0.74rem;
   font-weight: 600;
-  color: #8aa0b0;
-  border-right: 1px solid #d0dde5;
+  color: #b08a7e;
+  border-right: 1px solid var(--line);
   transition: background 120ms, color 120ms;
 }
 .az-step-dot:last-child { border-right: none; }
-.az-step-dot.az-step-done   { color: #4a7d5a; background: #edf7f0; }
-.az-step-dot.az-step-active { color: #1b3a4b; background: #dceef7; font-weight: 800; }
+.az-step-dot.az-step-done   { color: #2a5a30; background: #eef6ea; }
+.az-step-dot.az-step-active { color: var(--accent); background: #f9e8e3; font-weight: 800; }
 
 /* Section content areas */
 .az-section {
@@ -2274,24 +2272,24 @@ body.name-gate-active {
 
 .az-instruction {
   font-size: 0.88rem;
-  color: #2c4d5e;
+  color: var(--ink);
   margin: 0;
   line-height: 1.5;
 }
 
 .az-hint {
   font-size: 0.84rem;
-  color: #1b3a4b;
+  color: var(--accent);
   font-weight: 600;
   margin: 0;
-  background: #dceef7;
+  background: #f9e8e3;
   border-radius: 6px;
   padding: 7px 12px;
 }
 
 .az-tip {
   font-size: 0.76rem;
-  color: #6b8090;
+  color: var(--ink-soft);
   font-style: italic;
   margin: 0;
 }
@@ -2305,15 +2303,16 @@ body.name-gate-active {
   align-items: center;
   gap: 8px;
   padding: 10px 22px;
-  background: #1b3a4b;
+  background: var(--accent);
   color: #fff;
   border-radius: 10px;
   font-size: 0.9rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background 80ms;
+  transition: background 90ms;
+  box-shadow: 0 3px 0 var(--accent-deep);
 }
-.az-photo-btn:hover { background: #264f65; }
+.az-photo-btn:hover { background: #8b2535; }
 
 /* Canvas */
 .az-canvas-wrap {
@@ -2327,7 +2326,7 @@ body.name-gate-active {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
-  border: 1.5px solid #b5c4d0;
+  border: 1.5px solid var(--line);
   cursor: crosshair;
   display: block;
   touch-action: none;
@@ -2345,36 +2344,38 @@ body.name-gate-active {
   flex: 1;
   min-width: 120px;
   padding: 7px 10px;
-  border: 1.5px solid #b5c4d0;
+  border: 1.5px solid var(--line);
   border-radius: 8px;
   font-size: 0.86rem;
-  color: #1b3a4b;
+  color: var(--ink);
 }
-.az-cm-input:focus { outline: none; border-color: #6b1f2a; }
+.az-cm-input:focus { outline: none; border-color: var(--accent); }
 
 .az-small-btn {
   font-size: 0.78rem;
   padding: 6px 12px;
   border-radius: 7px;
-  border: 1.5px solid #b5c4d0;
-  background: #f5f8fa;
-  color: #44637a;
+  border: 1.5px solid var(--line);
+  background: #fdf3ef;
+  color: var(--accent);
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: none;
 }
-.az-small-btn:hover { background: #e4edf3; }
+.az-small-btn:hover { background: #f9e8e3; }
 
 .az-skip-btn {
   font-size: 0.78rem;
   padding: 5px 0;
   background: none;
   border: none;
-  color: #6b8090;
+  color: var(--ink-soft);
   cursor: pointer;
   text-decoration: underline;
   text-align: left;
+  box-shadow: none;
 }
-.az-skip-btn:hover { color: #1b3a4b; }
+.az-skip-btn:hover { color: var(--accent); }
 
 /* Results */
 .az-results { padding: 0 0 4px; }
@@ -2387,12 +2388,13 @@ body.name-gate-active {
 
 .az-result-size {
   font-size: 0.92rem;
-  color: #1b3a4b;
+  color: var(--ink);
   padding: 10px 14px;
-  background: #eef4f8;
+  background: #fdf3ef;
   border-radius: 8px;
   line-height: 1.5;
 }
+.az-result-size a { color: var(--accent); }
 
 .az-result-row {
   display: grid;
@@ -2411,19 +2413,19 @@ body.name-gate-active {
 
 .az-rlabel {
   font-size: 0.84rem;
-  color: #2c4d5e;
+  color: var(--ink);
   font-weight: 600;
 }
 
 .az-rval {
   font-size: 0.86rem;
   font-weight: 700;
-  color: #1b3a4b;
+  color: var(--accent);
   text-align: right;
 }
 
 .az-rbar {
-  background: #e4edf3;
+  background: #efe2db;
   border-radius: 4px;
   height: 10px;
   overflow: hidden;
@@ -2437,11 +2439,11 @@ body.name-gate-active {
 
 .az-disclaimer {
   font-size: 0.74rem;
-  color: #7a8fa0;
+  color: var(--ink-soft);
   font-style: italic;
   margin: 10px 0 0;
   padding: 8px 10px;
-  background: #f5f8fa;
+  background: #fdf3ef;
   border-radius: 6px;
   line-height: 1.5;
 }
@@ -2451,8 +2453,8 @@ body.name-gate-active {
   display: flex;
   gap: 10px;
   padding: 12px 18px 16px;
-  border-top: 1px solid #e4edf3;
-  background: #f7fafb;
+  border-top: 1px solid var(--line);
+  background: var(--paper-soft);
 }
 
 .az-btn-secondary, .az-btn-primary, .az-btn-apply {
@@ -2462,31 +2464,34 @@ body.name-gate-active {
   font-weight: 700;
   cursor: pointer;
   border: none;
-  transition: background 80ms;
+  transition: background 90ms;
 }
 
 .az-btn-secondary {
-  background: #e4edf3;
-  color: #1b3a4b;
+  background: #efe2db;
+  color: var(--accent);
+  box-shadow: none;
 }
-.az-btn-secondary:hover { background: #d0dde5; }
+.az-btn-secondary:hover { background: #e6d3cb; }
 .az-btn-secondary[hidden] { display: none !important; }
 
 .az-btn-primary {
-  background: #1b3a4b;
+  background: var(--accent);
   color: #fff;
   margin-left: auto;
+  box-shadow: 0 3px 0 var(--accent-deep);
 }
-.az-btn-primary:hover:not(:disabled) { background: #264f65; }
-.az-btn-primary:disabled { opacity: 0.45; cursor: default; }
+.az-btn-primary:hover:not(:disabled) { background: #8b2535; }
+.az-btn-primary:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
 .az-btn-primary[hidden] { display: none !important; }
 
 .az-btn-apply {
-  background: #6b1f2a;
+  background: #2a5a30;
   color: #fff;
   margin-left: auto;
+  box-shadow: 0 3px 0 #1c3d20;
 }
-.az-btn-apply:hover { background: #4a1520; }
+.az-btn-apply:hover { background: #357039; }
 .az-btn-apply[hidden] { display: none !important; }
 
 @media (max-width: 500px) {

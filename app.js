@@ -758,7 +758,8 @@
 
     let rulerPts  = [];       /* [{ix,iy}] image coords, max 2 */
     let pxPerCm   = null;
-    let woundPts  = [];       /* [{ix,iy}] image coords, max 2 */
+    let woundPath = [];       /* [{ix,iy}] image coords — freeform polygon */
+    let isDrawing = false;
     let results   = null;     /* {pct, lCm, wCm, areaCm} */
 
     /* ── element helpers ── */
@@ -783,7 +784,7 @@
 
     function reset() {
       photo = null; photoW = photoH = 0; canvW = canvH = 0; imgScale = 1;
-      rulerPts = []; pxPerCm = null; woundPts = []; results = null;
+      rulerPts = []; pxPerCm = null; woundPath = []; isDrawing = false; results = null;
       const inp = $("analyzerPhotoInput"); if (inp) inp.value = "";
       const cm  = $("analyzerRulerCm");   if (cm)  cm.value  = "";
       const c = cvs();
@@ -811,7 +812,7 @@
       if (nb) {
         nb.hidden = n === 4;
         nb.textContent = n === 3 ? "Analyze →" : "Next →";
-        nb.disabled = (n === 1 && !photo) || (n === 3 && woundPts.length < 2);
+        nb.disabled = (n === 1 && !photo) || (n === 3 && woundPath.length < 3);
       }
       if (ab) ab.hidden = n !== 4;
 
@@ -857,30 +858,24 @@
         ctx.restore();
       }
 
-      /* wound rect overlay — yellow */
-      if (woundPts.length) {
+      /* wound freeform path overlay — gold accent */
+      if (woundPath.length) {
         ctx.save();
-        ctx.strokeStyle = "#ffeb3b"; ctx.lineWidth = 2.5;
-        const a = toCanvas(woundPts[0]);
-        if (woundPts.length === 1) {
-          ctx.fillStyle = "#ffeb3b";
-          ctx.beginPath(); ctx.arc(a.x, a.y, 7, 0, Math.PI * 2); ctx.fill();
-        } else {
-          const b = toCanvas(woundPts[1]);
-          const rx = Math.min(a.x, b.x); const ry = Math.min(a.y, b.y);
-          const rw = Math.abs(b.x - a.x);  const rh = Math.abs(b.y - a.y);
-          ctx.fillStyle = "rgba(255,235,59,0.14)";
-          ctx.fillRect(rx, ry, rw, rh);
-          ctx.strokeRect(rx, ry, rw, rh);
-          if (pxPerCm) {
-            ctx.fillStyle = "#ffeb3b"; ctx.font = "bold 13px system-ui"; ctx.textAlign = "center";
-            const lCm = (Math.max(rw, rh) / imgScale / pxPerCm).toFixed(1);
-            const wCm = (Math.min(rw, rh) / imgScale / pxPerCm).toFixed(1);
-            ctx.fillText(lCm + " cm", rx + rw / 2, ry - 7);
-            ctx.save(); ctx.translate(rx + rw + 16, ry + rh / 2);
-            ctx.rotate(Math.PI / 2); ctx.fillText(wCm + " cm", 0, 0); ctx.restore();
-          }
+        ctx.strokeStyle = "#c49a18"; ctx.lineWidth = 2.5;
+        ctx.lineJoin = "round"; ctx.lineCap = "round";
+        ctx.beginPath();
+        const first = toCanvas(woundPath[0]);
+        ctx.moveTo(first.x, first.y);
+        for (let i = 1; i < woundPath.length; i++) {
+          const p = toCanvas(woundPath[i]);
+          ctx.lineTo(p.x, p.y);
         }
+        if (!isDrawing && woundPath.length >= 3) {
+          ctx.closePath();
+          ctx.fillStyle = "rgba(196,154,24,0.16)";
+          ctx.fill();
+        }
+        ctx.stroke();
         ctx.restore();
       }
     }
@@ -889,29 +884,59 @@
       return Math.sqrt((b.ix - a.ix) ** 2 + (b.iy - a.iy) ** 2);
     }
 
-    /* ── canvas tap ── */
-    function onCanvasTap(evt) {
-      if (!photo) return;
-      evt.preventDefault();
-      const c = cvs(); if (!c) return;
+    /* ── pointer → image coords ── */
+    function eventToImagePt(evt) {
+      const c = cvs(); if (!c) return null;
       const rect = c.getBoundingClientRect();
       const cssScaleX = canvW / rect.width;
       const cssScaleY = canvH / rect.height;
-      const src = evt.touches ? evt.touches[0] : evt;
+      const src = evt.touches && evt.touches.length ? evt.touches[0]
+        : (evt.changedTouches && evt.changedTouches.length ? evt.changedTouches[0] : evt);
       const cx = (src.clientX - rect.left) * cssScaleX;
       const cy = (src.clientY - rect.top)  * cssScaleY;
-      const pt = { ix: cx / imgScale, iy: cy / imgScale };
+      return { ix: cx / imgScale, iy: cy / imgScale };
+    }
 
-      if (step === 2) {
-        rulerPts = rulerPts.length < 2 ? [...rulerPts, pt] : [pt];
-        updateRulerHint();
-      } else if (step === 3) {
-        woundPts = woundPts.length < 2 ? [...woundPts, pt] : [pt];
-        updateWoundHint();
-      }
+    /* Step 2 (ruler): tap to place up to two points */
+    function onCanvasTap(evt) {
+      if (!photo || step !== 2) return;
+      evt.preventDefault();
+      const pt = eventToImagePt(evt); if (!pt) return;
+      rulerPts = rulerPts.length < 2 ? [...rulerPts, pt] : [pt];
+      updateRulerHint();
       drawCanvas();
+    }
+
+    /* Step 3 (wound): drag to trace a freeform outline */
+    function onDrawStart(evt) {
+      if (!photo || step !== 3) return;
+      evt.preventDefault();
+      const pt = eventToImagePt(evt); if (!pt) return;
+      isDrawing = true;
+      woundPath = [pt];
+      drawCanvas();
+    }
+
+    function onDrawMove(evt) {
+      if (!isDrawing || step !== 3) return;
+      evt.preventDefault();
+      const pt = eventToImagePt(evt); if (!pt) return;
+      /* only record if moved a meaningful distance (reduces point density) */
+      const last = woundPath[woundPath.length - 1];
+      if (!last || Math.abs(pt.ix - last.ix) + Math.abs(pt.iy - last.iy) > 3) {
+        woundPath.push(pt);
+        drawCanvas();
+      }
+    }
+
+    function onDrawEnd(evt) {
+      if (!isDrawing) return;
+      if (evt) evt.preventDefault();
+      isDrawing = false;
+      drawCanvas();
+      updateWoundHint();
       const nb = $("analyzerNextBtn");
-      if (nb) nb.disabled = (step === 3 && woundPts.length < 2);
+      if (nb) nb.disabled = woundPath.length < 3;
     }
 
     function updateRulerHint() {
@@ -926,9 +951,8 @@
 
     function updateWoundHint() {
       const h = $("analyzerWoundHint"); if (!h) return;
-      if (!woundPts.length)      h.textContent = "Tap the first corner of the wound area.";
-      else if (woundPts.length === 1) h.textContent = "Tap the opposite corner of the wound area.";
-      else h.textContent = "Rectangle set — tap to reposition, or click Analyze.";
+      if (woundPath.length < 3) h.textContent = "Trace around the wound bed — drag along the wound edge. Avoid healthy skin.";
+      else h.textContent = "Outline set — drag again to redraw, or click Analyze.";
     }
 
     /* ── color analysis ── */
@@ -960,16 +984,34 @@
       return "slough";
     }
 
+    /* ray-casting point-in-polygon test (image coords) */
+    function pointInPath(ix, iy, path) {
+      let inside = false;
+      for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+        const xi = path[i].ix, yi = path[i].iy;
+        const xj = path[j].ix, yj = path[j].iy;
+        const intersect = ((yi > iy) !== (yj > iy)) &&
+          (ix < (xj - xi) * (iy - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
     function analyze() {
-      const c = cvs(); if (!c || !photo || woundPts.length < 2) return null;
-      const ix1 = Math.max(0, Math.min(woundPts[0].ix, woundPts[1].ix));
-      const iy1 = Math.max(0, Math.min(woundPts[0].iy, woundPts[1].iy));
-      const ix2 = Math.min(photoW, Math.max(woundPts[0].ix, woundPts[1].ix));
-      const iy2 = Math.min(photoH, Math.max(woundPts[0].iy, woundPts[1].iy));
-      const rw = Math.round(ix2 - ix1); const rh = Math.round(iy2 - iy1);
+      const c = cvs(); if (!c || !photo || woundPath.length < 3) return null;
+
+      /* bounding box of the freeform outline */
+      let ix1 = Infinity, iy1 = Infinity, ix2 = -Infinity, iy2 = -Infinity;
+      for (const p of woundPath) {
+        ix1 = Math.min(ix1, p.ix); iy1 = Math.min(iy1, p.iy);
+        ix2 = Math.max(ix2, p.ix); iy2 = Math.max(iy2, p.iy);
+      }
+      ix1 = Math.max(0, Math.floor(ix1)); iy1 = Math.max(0, Math.floor(iy1));
+      ix2 = Math.min(photoW, Math.ceil(ix2)); iy2 = Math.min(photoH, Math.ceil(iy2));
+      const rw = ix2 - ix1, rh = iy2 - iy1;
       if (rw < 5 || rh < 5) return null;
 
-      /* draw selection at 1:1 on offscreen canvas for exact pixel data */
+      /* draw bounding-box crop at 1:1 on offscreen canvas */
       const off = document.createElement("canvas");
       off.width = rw; off.height = rh;
       const octx = off.getContext("2d");
@@ -978,11 +1020,19 @@
 
       const counts = { granulation: 0, slough: 0, eschar: 0, epithelialization: 0 };
       let total = 0;
-      /* sample every 4th pixel (stride=16 bytes) for performance */
-      for (let i = 0; i < data.length; i += 16) {
-        if (data[i + 3] < 128) continue;
-        counts[classifyPixel(data[i], data[i + 1], data[i + 2])]++;
-        total++;
+      let polyPixels = 0; /* pixels inside the outline, for area */
+      /* sample every 2nd pixel in each direction */
+      const stride = 2;
+      for (let y = 0; y < rh; y += stride) {
+        for (let x = 0; x < rw; x += stride) {
+          /* point-in-polygon test using full-image coords */
+          if (!pointInPath(ix1 + x, iy1 + y, woundPath)) continue;
+          polyPixels++;
+          const idx = (y * rw + x) * 4;
+          if (data[idx + 3] < 128) continue;
+          counts[classifyPixel(data[idx], data[idx + 1], data[idx + 2])]++;
+          total++;
+        }
       }
       if (!total) return null;
 
@@ -997,9 +1047,11 @@
 
       let lCm = null, wCm = null, areaCm = null;
       if (pxPerCm) {
+        /* length/width from bounding box; area from actual traced region */
         lCm   = parseFloat((Math.max(rw, rh) / pxPerCm).toFixed(1));
         wCm   = parseFloat((Math.min(rw, rh) / pxPerCm).toFixed(1));
-        areaCm = parseFloat((lCm * wCm).toFixed(2));
+        const sampledArea = polyPixels * stride * stride; /* px² inside outline */
+        areaCm = parseFloat((sampledArea / (pxPerCm * pxPerCm)).toFixed(2));
       }
       return { pct, lCm, wCm, areaCm };
     }
@@ -1009,7 +1061,7 @@
       const panel = $("analyzerResults"); if (!panel) return;
       const { pct, lCm, wCm, areaCm } = results;
       const sizeHtml = lCm != null
-        ? `<strong>${lCm} × ${wCm} cm</strong> &nbsp;(area&nbsp;${areaCm}&nbsp;cm²)`
+        ? `<strong>${lCm} × ${wCm} cm</strong> &nbsp;(traced area&nbsp;${areaCm}&nbsp;cm²)`
         : `<em>No ruler — size not calculated. <a href="#" id="azGoBackRuler">Go back to add ruler.</a></em>`;
 
       panel.innerHTML = `
@@ -1102,13 +1154,33 @@
       $("analyzerApplyBtn")?.addEventListener("click", applyResults);
       $("analyzerSkipRulerBtn")?.addEventListener("click", () => setStep(3));
       $("analyzerRulerClearBtn")?.addEventListener("click", () => { rulerPts = []; pxPerCm = null; drawCanvas(); updateRulerHint(); });
-      $("analyzerWoundClearBtn")?.addEventListener("click", () => { woundPts = []; drawCanvas(); updateWoundHint(); const nb = $("analyzerNextBtn"); if (nb) nb.disabled = true; });
+      $("analyzerWoundClearBtn")?.addEventListener("click", () => {
+        woundPath = []; isDrawing = false; drawCanvas(); updateWoundHint();
+        const nb = $("analyzerNextBtn"); if (nb) nb.disabled = true;
+      });
+      $("analyzerWoundUndoBtn")?.addEventListener("click", () => {
+        /* remove the last ~10% of trace points so a stray tail can be trimmed */
+        const drop = Math.max(1, Math.round(woundPath.length * 0.1));
+        woundPath = woundPath.slice(0, Math.max(0, woundPath.length - drop));
+        drawCanvas(); updateWoundHint();
+        const nb = $("analyzerNextBtn"); if (nb) nb.disabled = woundPath.length < 3;
+      });
       $("woundAnalyzerModal")?.addEventListener("click", (e) => { if (e.target.id === "woundAnalyzerModal") close(); });
-      /* canvas events — touchstart + click for both mobile and desktop */
+
+      /* canvas events */
       const c = cvs();
       if (c) {
-        c.addEventListener("click",      onCanvasTap);
-        c.addEventListener("touchstart", onCanvasTap, { passive: false });
+        /* step 2 ruler — tap */
+        c.addEventListener("click", onCanvasTap);
+        /* step 3 wound — drag to draw (mouse) */
+        c.addEventListener("mousedown", onDrawStart);
+        c.addEventListener("mousemove", onDrawMove);
+        window.addEventListener("mouseup", onDrawEnd);
+        /* step 3 wound — drag to draw (touch) */
+        c.addEventListener("touchstart", (e) => { if (step === 3) onDrawStart(e); else onCanvasTap(e); }, { passive: false });
+        c.addEventListener("touchmove", onDrawMove, { passive: false });
+        c.addEventListener("touchend", onDrawEnd, { passive: false });
+        c.addEventListener("touchcancel", onDrawEnd, { passive: false });
       }
       $("analyzerRulerCm")?.addEventListener("input", () => { drawCanvas(); updateRulerHint(); });
     }
@@ -8434,7 +8506,10 @@
     return `
       <div class="manual-wound-head">
         <h3 class="manual-wound-title">Wound ${escapeHtml(String(cardNumber))}</h3>
-        <button class="manual-remove-btn" type="button" data-manual-action="remove">Remove</button>
+        <div class="manual-wound-head-actions">
+          <button type="button" class="az-analyze-btn" data-manual-action="open-analyzer" title="Analyze a wound photo to auto-fill measurements and tissue %">📷 Analyze Photo</button>
+          <button class="manual-remove-btn" type="button" data-manual-action="remove">Remove</button>
+        </div>
       </div>
       <div class="manual-grid">
         <label class="manual-field">
@@ -8497,10 +8572,6 @@
         </label>
       </div>
       <div data-tissue-alert class="tissue-pct-alert"></div>
-      <div class="az-card-btn-row">
-        <button type="button" class="az-analyze-btn" data-manual-action="open-analyzer">📷 Analyze Photo</button>
-        <span class="az-card-btn-hint">Auto-fill measurements &amp; tissue %</span>
-      </div>
       <details class="manual-prior manual-clinical-details">
         <summary>Clinical Details <span class="manual-details-hint">(wound characteristics, infection flags)</span></summary>
         <div class="manual-grid manual-prior">

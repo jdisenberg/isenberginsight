@@ -365,8 +365,11 @@
 
         <!-- Step 3: Wound outline -->
         <div id="azWoundSection" class="az-section" hidden>
-          <p id="analyzerWoundHint" class="az-hint">Tap two opposite corners of a rectangle around the wound bed.</p>
-          <button type="button" id="analyzerWoundClearBtn" class="az-small-btn">Reset selection</button>
+          <p id="analyzerWoundHint" class="az-hint">Trace around the wound bed — drag your finger or mouse along the wound edge. Avoid healthy skin.</p>
+          <div class="az-calib-row">
+            <button type="button" id="analyzerWoundUndoBtn" class="az-small-btn">Undo last point</button>
+            <button type="button" id="analyzerWoundClearBtn" class="az-small-btn">Start over</button>
+          </div>
         </div>
 
         <!-- Step 4: Results -->
