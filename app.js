@@ -6515,6 +6515,14 @@
       ["moderate", "heavy", "very_heavy"].includes(c.effectiveExudateAmount || "");
     const dryWound = (c.eschar > 0 || c.slough > 0) && !heavyExudate;
     const infected  = c.potentialBioburden || (c.effectiveInfectionSigns && c.effectiveInfectionSigns.length > 0);
+    const hasTunneling  = Boolean(row.tunneling_text && row.tunneling_text.trim());
+    const hasUndermining = Boolean(row.undermining_text && row.undermining_text.trim());
+    const cavityOrTunnel = c.cavityLikely || hasTunneling || hasUndermining;
+    const debridementIndicated = c.debridementNeeded ||
+      Number(row.eschar_pct || 0) >= 10 ||
+      Number(row.slough_pct || 0) >= 20;
+    const advancedTherapyContext = c.diabeticFootRelated || c.venousRelated || c.pressureRelated ||
+      c.osteomyelitisSignal || c.surgicalWound || c.traumaticWound;
 
     /* ── Required documentation (always shown) ─────────────── */
     const chart = [
@@ -6527,10 +6535,20 @@
       { req: true,  item: "Treatment applied",             detail: "Dressing type (primary and secondary); wound care procedure performed" },
       { req: true,  item: "Clinical rationale",            detail: "Why this dressing/treatment was selected — required to support medical necessity" },
       { req: true,  item: "Response to prior treatment",   detail: "Objective improvement, no change, or worsening since last visit with measurements" },
+      { req: advancedTherapyContext, item: "Wound photography", detail: "Dated photo at initiation and every 4 weeks — required by most MACs for NPWT, CTPs, and HBOT; label with patient ID and date" },
       { req: false, item: "Odor",                          detail: "None / mild / moderate / strong — document character if present" },
       { req: false, item: "Pain",                          detail: "Numeric rating at wound site; note if dressing-change related" },
       { req: false, item: "Patient/caregiver education",   detail: "Teaching provided — required for home health coverage" },
     ];
+
+    if (debridementIndicated) {
+      chart.push(
+        { req: true,  item: "Debridement method",          detail: "Sharp (scalpel/curette), enzymatic (product name), autolytic, or biosurgical — must match billed CPT (97597/97598 = selective; 97602 = non-selective)" },
+        { req: true,  item: "Surface area debrided (sq cm)", detail: "L × W in cm² treated — required to select correct 97597 vs 97598 tier and to support medical necessity" },
+        { req: true,  item: "Tissue type removed",         detail: "Eschar vs. slough, adherence, and depth of removal — distinguishes selective from non-selective debridement for correct code" },
+        { req: false, item: "Pre/post debridement wound bed", detail: "Document wound bed appearance before and after — supports clinical necessity and shows response" },
+      );
+    }
 
     if (c.diabeticFootRelated) {
       chart.push(
@@ -6552,6 +6570,22 @@
         { req: true,  item: "ABI value and date",          detail: "ABI ≥ 0.8 required for compression; 0.5–0.8 requires physician review; < 0.5 is contraindicated" },
         { req: true,  item: "Compression therapy type",    detail: "Multi-layer, Unna boot, or stockings — document patient compliance at each visit" },
         { req: false, item: "Leg elevation instructions",  detail: "Documents conservative management component for LCD compliance" },
+      );
+    }
+    if (c.arterialRelated) {
+      chart.push(
+        { req: true,  item: "ABI / TBI and date",          detail: "ABI < 0.6 indicates critical ischemia — document value, date, and lab/device used" },
+        { req: true,  item: "Vascular surgery referral",   detail: "Referral to vascular surgery required for ABI < 0.5 or non-healing arterial wound — document date and outcome" },
+        { req: true,  item: "Revascularization status",    detail: "Prior bypass, angioplasty, or stenting — date and vessel treated; or note if not a candidate" },
+        { req: false, item: "Toe pressures / TcPO2",       detail: "Toe-brachial index or transcutaneous oxygen — useful when ABI non-compressible (diabetics, calcified vessels)" },
+      );
+    }
+    if (c.surgicalWound || c.traumaticWound) {
+      chart.push(
+        { req: true,  item: "Operative / procedure report date", detail: "Reference the surgical record — required for dehiscence and SSI coding" },
+        { req: true,  item: "Date of primary closure attempt",   detail: "Establishes wound chronicity for complication coding (T81.3x for dehiscence)" },
+        { req: true,  item: "SSI / infection signs",             detail: "Erythema, warmth, induration, purulent drainage, fever — required for T81.4x infection codes" },
+        { req: false, item: "Wound culture results",             detail: "Organism and sensitivities — supports antibiotic selection and T81.43 organ/space SSI coding" },
       );
     }
     if (c.osteomyelitisSignal) {
@@ -6599,6 +6633,16 @@
       });
     }
 
+    if (!heavyExudate && !infected) {
+      dressings.push({
+        name: "Transparent film",
+        hcpcs: "A6257 (≤16 sq in) · A6258 (>16–48 sq in) · A6259 (>48 sq in)",
+        frequency: "Up to 3× per week; typically left in place 3–7 days",
+        indication: "Superficial / stage 1–2 wounds; low exudate; autolytic debridement of thin slough; donor sites",
+        mustDoc: "Minimal or no exudate; wound not infected; superficial wound depth documented; reason for moisture-retentive barrier",
+      });
+    }
+
     if (dryWound || c.debridementNeeded) {
       dressings.push({
         name: "Hydrogel",
@@ -6606,6 +6650,26 @@
         frequency: "Up to 3× per week",
         indication: "Dry or minimally exudating wound; necrotic/sloughy wound bed needing moisture donation",
         mustDoc: "Dry or minimal exudate documented; necrotic or sloughy tissue present requiring hydration",
+      });
+    }
+
+    if (cavityOrTunnel || infected || c.surgicalWound || c.traumaticWound) {
+      dressings.push({
+        name: "Impregnated gauze (petrolatum / iodoform)",
+        hcpcs: "A6222 (petrolatum ≤16 sq in) · A6223–A6228 (iodoform/antimicrobial, by size) · A6229–A6230 (other)",
+        frequency: "Up to 3× per week; iodoform limit 2–4 weeks then reassess silver toxicity",
+        indication: "Packing for tunnels, undermining, and cavities; petrolatum for non-adherent contact on burns/donor sites; iodoform for infected or malodorous wounds",
+        mustDoc: "Tunneling depth (cm) or undermining extent documented; packing method described; iodoform: infection signs present; reassessment date for iodoform use > 2 weeks",
+      });
+    }
+
+    if (cavityOrTunnel) {
+      dressings.push({
+        name: "Wound filler (alginate rope / gel filler)",
+        hcpcs: "A6261 (wound filler, not elsewhere classified, ≤16 g) · A6262 (>16 g)",
+        frequency: "Up to 3× per week; use enough to loosely fill dead space — do not over-pack",
+        indication: "Tunneling, undermining, or cavity wounds requiring dead-space management",
+        mustDoc: "Tunneling depth and direction (cm) or undermining extent (cm) at wound edge; filler type and approximate volume used; secondary dressing applied over filler",
       });
     }
 
@@ -6638,6 +6702,29 @@
     /* ── Advanced therapies ─────────────────────────────────── */
     const advanced = [];
 
+    if (debridementIndicated) {
+      advanced.push({
+        name: "Wound Debridement",
+        codes: "97597 (selective ≤20 sq cm) · 97598 (each add'l 20 sq cm, same session) · 97602 (non-selective, per session)",
+        frequency: "As medically necessary at each visit; document at every session debridement is performed",
+        criteria: [
+          "Necrotic, devitalized, or sloughy tissue present that impedes wound healing",
+          "97597/97598 (selective): targeted removal of devitalized tissue only — sharp, enzymatic, autolytic, or biosurgical",
+          "97602 (non-selective): wet-to-dry or irrigation — less targeted, may remove viable tissue; lower reimbursement",
+          "Cannot bill debridement (97597–97602) and E&M on the same date unless the visit is separately identifiable (-25 modifier required on E&M)",
+          "Cannot bill debridement and skin substitute application (CTPs) on the same date for the same wound",
+        ],
+        mustDoc: [
+          "Surface area treated in sq cm — calculated as L (cm) × W (cm); required to select correct tier",
+          "Type of tissue removed: eschar, slough, fibrin — note adherence and depth",
+          "Debridement method: sharp (scalpel/curette), enzymatic (specify product), autolytic, or biosurgical",
+          "Pre-debridement and post-debridement wound bed description",
+          "Bleeding control method if sharp debridement performed",
+          "Wound dimensions before and after debridement",
+        ],
+      });
+    }
+
     if (c.diabeticFootRelated || c.pressureRelated || c.venousRelated || c.surgicalWound || c.traumaticWound || c.osteomyelitisSignal) {
       advanced.push({
         name: "Negative Pressure Wound Therapy (NPWT)",
@@ -6657,6 +6744,7 @@
           "Prior conventional therapy documented — type, duration, and failure to heal",
           "Wound debrided prior to initiation (necrotic/sloughy tissue removed)",
           "NPWT setting: continuous vs. intermittent; target pressure (mmHg)",
+          "Dated wound photo at initiation — required by most MACs",
           "Reassessment plan — wound response documented at each dressing change",
         ],
       });
@@ -6676,6 +6764,7 @@
           "Prior authorization required by most payers — verify before ordering",
         ].filter(Boolean),
         mustDoc: [
+          "Dated wound photo immediately before application — required by most MACs",
           "Wound area: L (cm) × W (cm) = ___ sq cm — calculated immediately before application",
           "4-week treatment history with serial measurements showing < 50% area reduction",
           "Wound bed preparation confirmed: infection-free, clean granulating base",
