@@ -942,8 +942,9 @@
 
     /* Skip auth gate on localhost and Cloudflare preview deployments */
     const host = window.location.hostname;
+    /* Any subdomain of isenberginsight.pages.dev is a Cloudflare preview deployment */
     const isPreview = host === "localhost" || host === "127.0.0.1" ||
-      /^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+\.isenberginsight\.pages\.dev$/.test(host);
+      /\.isenberginsight\.pages\.dev$/.test(host);
     if (isPreview) {
       authState = { username: "preview", token: "", role: "admin", email: "" };
       setAppAccessLocked(false);
