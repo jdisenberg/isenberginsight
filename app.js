@@ -3616,6 +3616,11 @@
     const periWoundCondition = normalizeText(latest.periwound_condition || latest.periwound_text || "");
     const periWoundMacerated = periWoundCondition === "macerated";
     const periWoundCallused = periWoundCondition === "callused";
+    const periWoundErythematous = periWoundCondition === "erythematous";
+    const periWoundFriable = periWoundCondition === "friable";
+    const hasTunneling = Boolean(latest.tunneling_text && String(latest.tunneling_text).trim());
+    const hasUndermining = Boolean(latest.undermining_text && String(latest.undermining_text).trim());
+    const tunnelingDepthCm = Number(latest.tunneling_depth || 0);
 
     /* ABI / perfusion from new field */
     const abiRange = normalizeText(latest.abi_range || "");
@@ -3753,7 +3758,8 @@
       surgicalWound, osteomyelitisWound, vasculiticUlcer, martorell, hidradenitisSuppurativa, graftWound,
       osteomyelitisSignal: (osteomyelitisWound || woundTypeText.includes("osteomyelitis")),
       epiboleSignal: (periWoundCallused || woundTypeText.includes("epibole") || woundTypeText.includes("rolled edge")),
-      periWoundCondition, periWoundMacerated, periWoundCallused,
+      periWoundCondition, periWoundMacerated, periWoundCallused, periWoundErythematous, periWoundFriable,
+      hasTunneling, hasUndermining, tunnelingDepthCm,
       abiDocumented, abiInadequateForCompression, abiMildImpairment, abiRange,
       diabeticSuboptimal4WeekProgress, venousSuboptimal4WeekProgress,
       manualOverridesApplied: Boolean(
@@ -5029,6 +5035,16 @@
 
     if (c.periWoundMacerated) {
       add("medium", "Periwound Maceration", "Reduce dressing occlusion and/or exudate burden; apply zinc oxide or cyanoacrylate skin barrier to periwound skin", "Periwound maceration softens and weakens skin integrity, can progress to MASD, and increases infection risk. Addressing the source of excess moisture (dressing selection, exudate management) combined with a barrier product protects the wound margin.", "Consider more absorptive dressing or shorter change interval; avoid occlusive film dressings in high-drainage wounds; reassess at each change.");
+    }
+    if (c.periWoundErythematous) {
+      add("medium", "Periwound Erythema", "Document extent and margin of periwound erythema — differentiate cellulitis (spreading border, systemic signs, warmth) from wound-adjacent inflammation (stable, local). If advancing margin: obtain wound culture and consider systemic antibiotics.", "Periwound erythema that is expanding and accompanied by warmth or systemic signs meets criteria for cellulitis requiring systemic antibiotics per IDSA guidelines.", "Mark the erythema margin with a skin marker and date it to objectively track spread; reassess in 24–48 hours.");
+    }
+    if (c.periWoundFriable) {
+      add("medium", "Fragile Periwound Skin", "Use silicone-interface non-adherent primary dressings and apply cyanoacrylate skin film (e.g., Cavilon No Sting) to fragile periwound skin before securing.", "Friable/fragile periwound skin is at high risk for stripping injury with adhesive dressings. Silicone foam edges or non-adhesive secondary dressings secured with tubular bandage reduce trauma at each change.", "Avoid adhesive tapes directly on fragile periwound skin; consider skin barrier wipes as a release layer before applying any adhesive.");
+    }
+    if (c.hasTunneling || c.hasUndermining) {
+      const spec = c.tunnelingDepthCm > 0 ? ` (depth ~${c.tunnelingDepthCm} cm)` : "";
+      add("medium", "Cavity/Tunneling Management", `Tunnel${spec}/undermining present — loosely pack dead space with appropriate wound filler; do not pack tightly. Document tunneling depth (cm) and clock position at each visit per CMS requirements.`, "Unfilled dead space risks abscess formation and anaerobic infection. Loose packing maintains drainage while preventing premature surface closure over unresolved dead space.", "Never pack tightly — overpacking increases pressure on wound base and impairs perfusion; leave trailing end outside wound for easy retrieval; consider alginate rope, iodoform, or NPWT for deep tunnels.");
     }
 
     const stageText4 = normalizeText(latest.stage || "");
