@@ -692,6 +692,7 @@
   /* ── Authentication ──────────────────────────────────────────────────── */
 
   const AUTH_STORAGE_KEY = "CICATRIX_AUTH_V1";
+  const AUTH_LAST_USER_KEY = "CICATRIX_LAST_USER";
   let authState = null; /* { username, token, role, email } once signed in */
 
   const AUTH_ERROR_MESSAGES = {
@@ -723,11 +724,19 @@
   }
 
   function saveStoredAuth(obj) {
-    try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(obj)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(obj));
+      if (obj.username) localStorage.setItem(AUTH_LAST_USER_KEY, obj.username);
+    } catch { /* ignore */ }
   }
 
   function clearStoredAuth() {
     try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch { /* ignore */ }
+    /* Keep AUTH_LAST_USER_KEY so the username field stays pre-filled */
+  }
+
+  function loadLastUsername() {
+    try { return localStorage.getItem(AUTH_LAST_USER_KEY) || ""; } catch { return ""; }
   }
 
   function isCurrentUserAdmin() {
@@ -803,7 +812,7 @@
       role: data.role || "user",
       email: data.email || "",
     };
-    saveStoredAuth({ username: authState.username, token });
+    saveStoredAuth({ username: authState.username, token, role: authState.role });
     if (els.settingsUserLabel) els.settingsUserLabel.value = authState.username;
     setAppAccessLocked(false);
     if (els.userAdminSection) els.userAdminSection.classList.toggle("hidden", !isCurrentUserAdmin());
@@ -934,6 +943,13 @@
     const stored = loadStoredAuth();
     setAppAccessLocked(true);
     showAuthView("login");
+
+    /* Pre-fill username from last successful login */
+    const lastUser = (stored && stored.username) || loadLastUsername();
+    if (lastUser && els.loginUsername && !els.loginUsername.value) {
+      els.loginUsername.value = lastUser;
+    }
+
     if (!stored) return false;
 
     const res = await authFetch({ action: "verify", username: stored.username, token: stored.token });
@@ -951,7 +967,7 @@
       setStatus(readyStatusText());
       return true;
     }
-    /* Session rejected (expired/invalid) — clear it and show login */
+    /* Session rejected (expired/invalid) — clear token but keep username pre-fill */
     clearStoredAuth();
     return false;
   }
