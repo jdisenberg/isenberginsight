@@ -1978,3 +1978,180 @@ body.name-gate-active {
   .push-score-cell { width: 80px; }
   .copy-narrative-btn { font-size: 0.72rem; padding: 3px 9px; }
 }
+
+/* ── CMS Coverage Guide ─────────────────────────────────────────────────── */
+
+.cms-guide-section {
+  margin-top: 14px;
+  border: 1.5px solid #b5c4d0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f7fafb;
+}
+
+.cms-guide-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  background: #e4eff5;
+  list-style: none;
+  user-select: none;
+}
+.cms-guide-toggle::-webkit-details-marker { display: none; }
+
+.cms-guide-label {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #1b3a4b;
+  flex-shrink: 0;
+}
+
+.cms-guide-meta {
+  font-size: 0.78rem;
+  color: #4a6878;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cms-guide-body {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cms-section-head {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b1f2a;
+  border-bottom: 1.5px solid #d0dde5;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+
+/* Chart table */
+.cms-chart-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.cms-row {
+  border-bottom: 1px solid #e4edf2;
+}
+.cms-row:last-child { border-bottom: none; }
+
+.cms-row td {
+  padding: 6px 8px;
+  vertical-align: top;
+  line-height: 1.4;
+}
+
+.cms-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.cms-req  { background: #fde8e8; color: #7a1f1f; }
+.cms-opt  { background: #e8f4fd; color: #1a4a6e; }
+
+.cms-item {
+  font-weight: 600;
+  color: #1b3a4b;
+}
+
+.cms-detail {
+  color: #44637a;
+  font-size: 0.8rem;
+}
+
+/* Dressing blocks */
+.cms-block {
+  border: 1px solid #d0dde5;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: #fff;
+}
+.cms-block:last-child { margin-bottom: 0; }
+
+.cms-block-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eef4f8;
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: #1b3a4b;
+}
+
+.cms-hcpcs {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b1f2a;
+  background: #fde8e8;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.cms-block-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.cms-block-table tr td {
+  padding: 5px 12px;
+  border-top: 1px solid #e8eef3;
+  vertical-align: top;
+  line-height: 1.4;
+  color: #2c4d5e;
+}
+
+/* label cell */
+.cms-bl {
+  font-weight: 600;
+  color: #1b3a4b;
+  width: 110px;
+  white-space: nowrap;
+}
+
+/* Advanced therapy block */
+.cms-block-advanced {
+  border: 1px solid #c9d8c0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: #fff;
+}
+.cms-block-advanced:last-child { margin-bottom: 0; }
+
+.cms-block-advanced .cms-block-name {
+  background: #eef4ea;
+  color: #1e3a1a;
+}
+
+.cms-list {
+  margin: 0;
+  padding: 6px 12px 8px 28px;
+  font-size: 0.8rem;
+  color: #2c4d5e;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .cms-guide-meta { display: none; }
+  .cms-bl td:first-child { width: 90px; font-size: 0.77rem; }
+}
