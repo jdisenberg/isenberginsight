@@ -331,13 +331,14 @@
           <button type="button" id="analyzerCloseBtn" class="az-close" aria-label="Close">✕</button>
         </div>
 
-        <div class="az-steps" aria-label="Progress steps">
-          <span class="az-step-dot" data-step="1">1 · Photo</span>
-          <span class="az-step-dot" data-step="2">2 · Ruler</span>
-          <span class="az-step-dot" data-step="3">3 · Wound</span>
-          <span class="az-step-dot" data-step="4">4 · Results</span>
+        <div class="az-steps" aria-label="Progress steps — tap a step to go back">
+          <span class="az-step-dot" data-step="1" role="button" aria-label="Step 1, Photo">1 · Photo</span>
+          <span class="az-step-dot" data-step="2" role="button" aria-label="Step 2, Ruler">2 · Ruler</span>
+          <span class="az-step-dot" data-step="3" role="button" aria-label="Step 3, Wound">3 · Wound</span>
+          <span class="az-step-dot" data-step="4" role="button" aria-label="Step 4, Results">4 · Results</span>
         </div>
 
+        <div class="az-body">
         <!-- Step 1: Photo capture -->
         <div id="azPhotoSection" class="az-section">
           <p class="az-instruction">Take a photo of the wound or select one from your device. Good, even lighting gives the most accurate color analysis.</p>
@@ -376,6 +377,7 @@
         <div id="azResultsSection" class="az-section" hidden>
           <div id="analyzerResults" class="az-results"></div>
         </div>
+        </div><!-- /.az-body -->
 
         <div class="az-nav">
           <button type="button" id="analyzerBackBtn" class="az-btn-secondary" hidden>← Back</button>

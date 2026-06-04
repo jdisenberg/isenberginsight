@@ -940,6 +940,7 @@
     let canvW  = 0, canvH  = 0;
     let imgScale = 1;         /* canvas px per photo px */
     let step = 1;             /* 1=photo 2=ruler 3=wound 4=results */
+    let maxStep = 1;          /* furthest step reached — gates dot navigation */
 
     let rulerPts  = [];       /* [{ix,iy}] image coords, max 2 */
     let pxPerCm   = null;
@@ -979,8 +980,10 @@
           results  = saved.results || null;
           const cm = $("analyzerRulerCm");
           if (cm && saved.rulerCmValue) cm.value = saved.rulerCmValue;
+          /* unlock dot navigation up to the furthest step this card reached */
+          maxStep = results ? 4 : (woundPath.length >= 3 ? 3 : 2);
           if (results) { setStep(4); renderResults(); }
-          else setStep(2);
+          else setStep(woundPath.length >= 3 ? 3 : 2);
           setupCanvas(); /* size to the now-visible container */
         };
         img.src = saved.objectUrl;
@@ -999,6 +1002,7 @@
     /* Reset only the live working state — does NOT touch retained card photos */
     function blankState() {
       photo = null; photoW = photoH = 0; canvW = canvH = 0; imgScale = 1;
+      step = 1; maxStep = 1;
       rulerPts = []; pxPerCm = null; woundPath = []; isDrawing = false; results = null;
       const inp = $("analyzerPhotoInput"); if (inp) inp.value = "";
       const cm  = $("analyzerRulerCm");   if (cm)  cm.value  = "";
@@ -1047,16 +1051,21 @@
     /* ── step management ── */
     function setStep(n) {
       step = n;
+      maxStep = Math.max(maxStep, n);
       /* section visibility */
       const sections = { 1:"azPhotoSection", 2:"azCalibSection", 3:"azWoundSection", 4:"azResultsSection" };
       Object.entries(sections).forEach(([s, id]) => { const el = $(id); if (el) el.hidden = Number(s) !== n; });
       const wrap = $("azCanvasWrap"); if (wrap) wrap.hidden = n < 2;
 
-      /* step dots */
+      /* step dots — completed/active dots are clickable to navigate back */
       document.querySelectorAll(".az-step-dot").forEach((el) => {
         const s = Number(el.dataset.step);
         el.classList.toggle("az-step-active", s === n);
         el.classList.toggle("az-step-done",   s < n);
+        const reachable = s <= maxStep;
+        el.classList.toggle("az-step-clickable", reachable && s !== n);
+        el.setAttribute("aria-disabled", reachable ? "false" : "true");
+        el.setAttribute("tabindex", reachable ? "0" : "-1");
       });
 
       /* nav buttons */
@@ -1456,6 +1465,20 @@
         const nb = $("analyzerNextBtn"); if (nb) nb.disabled = woundPath.length < 3;
       });
       $("woundAnalyzerModal")?.addEventListener("click", (e) => { if (e.target.id === "woundAnalyzerModal") close(); });
+
+      /* numbered step dots — tap/keyboard to jump back to a reached step */
+      const gotoStep = (s) => {
+        if (!photo && s > 1) return;       /* nothing to show without a photo */
+        if (s > maxStep) return;           /* can't skip ahead to unreached steps */
+        if (s === 4 && !results) return;   /* results page needs a completed analysis */
+        if (s !== step) setStep(s);
+      };
+      document.querySelectorAll(".az-step-dot").forEach((el) => {
+        el.addEventListener("click", () => gotoStep(Number(el.dataset.step)));
+        el.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); gotoStep(Number(el.dataset.step)); }
+        });
+      });
 
       /* canvas events */
       const c = cvs();
@@ -7882,10 +7905,10 @@
             <strong>${escapeHtml(patient.patientName)}</strong>
             <button class="copy-narrative-btn" type="button" data-narrative="${escapeHtml(fullNarrative)}" title="Copy narrative to clipboard">Copy Narrative</button>
           </div>
+          ${cmsGuideBlocks || ""}
           <p class="narrative-summary">${escapeHtml(fullNarrative)}</p>
           ${pushBlocks}
           ${icd10Blocks || ""}
-          ${cmsGuideBlocks || ""}
         </section>
       `;
     });
@@ -8934,7 +8957,7 @@
       </div>
       <div data-tissue-alert class="tissue-pct-alert"></div>
       <details class="manual-prior manual-clinical-details">
-        <summary>Clinical Details <span class="manual-details-hint">(wound characteristics, infection flags)</span></summary>
+        <summary>Additional Wound Details <span class="manual-details-hint">(wound characteristics, infection flags)</span></summary>
         <div class="manual-grid manual-prior">
           <label class="manual-field">
             <span>Thickness of Wound</span>
