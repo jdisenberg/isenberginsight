@@ -5602,96 +5602,198 @@
 
     const isRight = loc.includes("right");
     const isLeft  = loc.includes("left");
-    const side    = isRight ? "1" : isLeft ? "2" : "9"; // laterality digit
+    const side    = isRight ? "1" : isLeft ? "2" : "9";
 
-    /* helpers */
     const locHas = (...terms) => terms.some((t) => loc.includes(t));
+
+    /* Shared infection pathogen helper — call after primary wound codes */
+    const addPathogen = () => {
+      if (c.potentialBioburden || c.effectiveInfectionSigns?.length) {
+        add("B95.62", "MRSA as causative organism", "Add when MRSA confirmed on culture; use B95.8 for other Staph, B96.89 for other bacteria");
+      }
+    };
 
     /* ── Necrotizing Fasciitis ────────────────────────────── */
     if (c.necrotizingFasciitis) {
-      add("M72.6",  "Necrotizing fasciitis");
-      add("A48.0",  "Gas gangrene", "Use if clostridial (Type I)");
-      add("B95.62", "MRSA as cause of NF", "Add when confirmed");
+      add("M72.6",  "Necrotizing fasciitis", "Sequence as principal diagnosis; add anatomical site code");
+      add("A48.0",  "Gas gangrene", "Add when clostridial (Type I polymicrobial) NF confirmed");
+      add("B95.62", "MRSA as causative organism", "Add when MRSA confirmed; B96.89 for other bacteria");
+      add("A41.9",  "Sepsis, unspecified organism", "Add if systemic sepsis criteria met; sequence per UHDDS guidelines");
       return suggestions;
     }
 
     /* ── Pyoderma Gangrenosum ─────────────────────────────── */
     if (c.pyodermaGangrenosum) {
-      add("L88", "Pyoderma gangrenosum");
+      add("L88",    "Pyoderma gangrenosum", "Primary code; PG is rarely idiopathic — code the underlying condition as an additional diagnosis");
+      add("K51.90", "Ulcerative colitis, unspecified, without complications", "Most common PG association (~50% of cases); use K51.x subcodes for specific type and severity");
+      add("K50.90", "Crohn's disease, unspecified, without complications", "Second most common IBD association; use K50.x subcodes as appropriate");
+      add("M05.79", "Rheumatoid arthritis with rheumatoid factor, other organs/systems", "If RA-associated PG; M06.9 for seronegative RA");
+      add("C92.00", "Acute myeloid leukemia (hematologic malignancy)", "Add if myeloproliferative disorder or other hematologic malignancy is associated");
+      add("Z79.899", "Other long-term drug therapy", "Add if on biologics (adalimumab, infliximab, ustekinumab) or cyclosporine");
       return suggestions;
     }
 
     /* ── Calciphylaxis ──────────────────────────────────────── */
     if (c.calciphylaxisWound) {
-      add("E83.59", "Calciphylaxis (disorder of calcium metabolism)");
-      add("N18.6",  "End-stage renal disease", "Add if dialysis-dependent");
+      add("E83.59", "Disorders of calcium metabolism, other", "Primary code for calciphylaxis / calcific uremic arteriolopathy (CUA)");
+      add("N18.5",  "Chronic kidney disease, stage 5", "Most common underlying condition; use N18.6 if actively on dialysis");
+      add("N18.6",  "End-stage renal disease", "Use when patient is hemodialysis or peritoneal dialysis dependent");
+      add("N25.81", "Secondary hyperparathyroidism of renal origin", "Nearly universal in dialysis-dependent calciphylaxis; add when PTH is elevated");
+      add("Z99.2",  "Dependence on renal dialysis", "Add if hemodialysis or peritoneal dialysis dependent");
+      add("T45.515A","Adverse effect of anticoagulants, initial encounter", "Warfarin is a major independent risk factor for calciphylaxis; add if on warfarin");
+      add("L97.829", "Non-pressure chronic ulcer of other part of lower leg, unspecified severity", "For the wound manifestation; use site-specific L97 subcode when known");
       return suggestions;
     }
 
     /* ── Malignant / Fungating ──────────────────────────────── */
     if (c.malignantWound) {
-      add("L98.499", "Non-pressure chronic ulcer, unspecified severity", "Underlying malignancy — add primary cancer code");
-      add("C44.90",  "Unspecified malignant neoplasm of skin, unspecified", "Replace with specific C-code for tumor type/site");
+      const malSite =
+        locHas("eyelid","periorbital","orbit")                               ? "C44.12" :
+        locHas("ear","auricle","pinna","external auditory")                  ? "C44.219" :
+        locHas("face","cheek","chin","forehead","nose","nasal","lip")        ? "C44.319" :
+        locHas("scalp","head","temple")                                      ? "C44.41" :
+        locHas("neck","cervical")                                            ? "C44.41" :
+        locHas("trunk","chest","thorax","abdomen","back","buttock","perineum") ? "C44.519" :
+        locHas("shoulder","arm","upper extremity","forearm","hand","wrist")  ? "C44.619" :
+        locHas("leg","thigh","lower extremity","foot","toe","ankle")         ? "C44.719" :
+        "C44.90";
+      const malSiteLabels = {
+        "C44.12":"NMSC, eyelid","C44.219":"NMSC, ear/EAC","C44.319":"NMSC, face",
+        "C44.41":"NMSC, scalp/neck","C44.519":"NMSC, trunk","C44.619":"NMSC, upper limb",
+        "C44.719":"NMSC, lower limb","C44.90":"Malignant neoplasm of skin, unspecified",
+      };
+      add(malSite, `Skin malignancy — ${malSiteLabels[malSite] || "unspecified site"}`,
+          "Replace C44 (NMSC/SCC/BCC) with C43 for melanoma or C49 for deeper soft tissue malignancy; confirm histology");
+      add("L98.499", "Non-pressure chronic ulcer, unspecified severity", "Secondary code for the fungating/ulcerating wound surface");
+      add("Z85.828", "Personal history of other malignant neoplasm of skin", "Add if prior skin cancer with current recurrence or new primary site");
       return suggestions;
     }
 
     /* ── Fistula ─────────────────────────────────────────────── */
     if (c.fistulaWound) {
-      add("K63.2",  "Fistula of intestine");
-      add("K60.3",  "Anal fistula", "Use if perianal");
-      add("L98.8",  "Other specified disorders of the skin", "For cutaneous fistula opening/wound NOS");
+      const isPerianal  = locHas("perineal","perianal","anal","anorectal","rectum","anus");
+      const isVaginal   = locHas("vaginal","vesico","rectovaginal","vesicovaginal");
+      const isPancreatic = locHas("pancre","pancreatic");
+      const isGastric   = locHas("gastro","stomach","gastric","duodenal");
+
+      if (isPerianal) {
+        add("K60.3", "Anal fistula", "For intersphincteric or transsphincteric anal fistula tract");
+        add("K60.4", "Rectal fistula", "Use when fistula opens into rectal wall rather than anal canal");
+        add("K60.5", "Anorectal fistula", "When both anal canal and rectal structures are involved in the tract");
+      } else if (isVaginal) {
+        add("N82.3", "Fistula of vagina to large intestine", "For rectovaginal fistula; N82.4 for other intestine-vagina fistulas");
+        add("N82.2", "Fistula of vagina to small intestine", "For enterovaginal fistula");
+        add("N82.0", "Vesicovaginal fistula", "Use if bladder is involved in the fistula tract");
+      } else if (isPancreatic) {
+        add("K86.89", "Other specified diseases of pancreas", "For pancreatic cutaneous fistula; K86.81 for pancreatic steatorrhea");
+        add("K63.2",  "Fistula of intestine", "Add if there is an intestinal component to the fistula tract");
+      } else if (isGastric) {
+        add("K31.6",  "Fistula of stomach and duodenum", "For gastrocutaneous or gastroenteric fistula");
+        add("K63.2",  "Fistula of intestine", "Add if intestinal involvement present");
+      } else {
+        add("K63.2",  "Fistula of intestine", "For enterocutaneous fistula; specify origin (small vs. large bowel) when known");
+        add("K63.89", "Other specified diseases of intestine", "Use for enteroenteral or other intestinal fistulas without cutaneous opening");
+      }
+      add("L98.8",  "Other specified disorders of the skin", "Secondary code for the external cutaneous fistula opening/periwound wound surface");
+      add("Z98.89", "Other specified postprocedural states", "Add when fistula is a known complication of prior surgery");
       return suggestions;
     }
 
     /* ── Traumatic Wound ─────────────────────────────────────── */
     if (c.traumaticWound) {
-      const isBite = c.woundTypeText.includes("bite");
-      if (isBite) {
-        add("W54.0XXA", "Dog bite, initial encounter", "W54=dog; W55=other animal; W50-W55 range for animal bites");
-        add("S61.419A", "Open wound of unspecified finger, initial encounter", "Replace with site-specific S code for actual location");
-        add("Z20.3",    "Contact with rabies", "Add if rabies exposure possible and animal status unknown");
+      const isBite      = c.woundTypeText.includes("bite");
+      const isBiteDog   = isBite && (c.woundTypeText.includes("dog") || c.woundTypeText.includes("canine"));
+      const isBiteCat   = isBite && (c.woundTypeText.includes("cat") || c.woundTypeText.includes("feline"));
+      const isBiteHuman = isBite && c.woundTypeText.includes("human");
+
+      /* Site-specific open wound code */
+      const openCode =
+        locHas("face","cheek","chin","lip","jaw","periorbital")               ? "S01.419A" :
+        locHas("scalp","head","skull","temple","forehead")                    ? "S01.019A" :
+        locHas("ear","auricle","pinna")                                       ? "S01.309A" :
+        locHas("neck","throat","cervical")                                    ? "S11.20XA" :
+        locHas("chest","thorax","sternum","rib","pectoral")                   ? "S21.109A" :
+        locHas("abdomen","flank","belly","umbilical","inguinal","groin")      ? "S31.119A" :
+        locHas("back","lumbar","lumbosacral","sacr")                          ? "S31.009A" :
+        locHas("shoulder","deltoid","upper arm","humerus")                    ?
+          (isRight ? "S41.101A" : isLeft ? "S41.102A" : "S41.109A") :
+        locHas("elbow","forearm","lower arm","radius","ulna")                 ?
+          (isRight ? "S51.801A" : isLeft ? "S51.802A" : "S51.809A") :
+        locHas("wrist","palm","hand")                                         ?
+          (isRight ? "S61.401A" : isLeft ? "S61.402A" : "S61.409A") :
+        locHas("finger","thumb","digit")                                      ?
+          (isRight ? "S61.301A" : isLeft ? "S61.302A" : "S61.319A") :
+        locHas("thigh","upper leg","femur")                                   ?
+          (isRight ? "S71.101A" : isLeft ? "S71.102A" : "S71.109A") :
+        locHas("knee","popliteal")                                            ?
+          (isRight ? "S81.001A" : isLeft ? "S81.002A" : "S81.009A") :
+        locHas("lower leg","shin","calf","tibia","fibula")                    ?
+          (isRight ? "S81.801A" : isLeft ? "S81.802A" : "S81.809A") :
+        locHas("ankle","malleolus")                                           ?
+          (isRight ? "S91.001A" : isLeft ? "S91.002A" : "S91.009A") :
+        locHas("foot","plantar","dorsum","midfoot","sole")                    ?
+          (isRight ? "S91.301A" : isLeft ? "S91.302A" : "S91.309A") :
+        locHas("toe","hallux","metatarsal")                                   ?
+          (isRight ? "S91.101A" : isLeft ? "S91.102A" : "S91.109A") :
+        null;
+
+      if (openCode) {
+        add(openCode, "Open wound — site-specific, initial encounter",
+            "7th character: A=initial, D=subsequent, S=sequela; verify exact subcode for right/left and wound depth");
       } else {
-        add("T14.9",    "Injury, unspecified", "Use specific S-code for anatomical site");
-        add("S01.319A", "Unspecified open wound of nose, initial encounter", "Example — replace with appropriate site-specific S code");
+        add("T14.9", "Injury, unspecified", "Replace with anatomical S-code for the specific wound site; use S01–S99 range by body region");
       }
-      add("Z23",     "Encounter for inoculation and vaccination", "Use when tetanus prophylaxis administered");
+
+      /* External cause / bite codes */
+      if (isBite) {
+        if (isBiteDog)        add("W54.0XXA", "Dog bite, initial encounter", "Add site-specific open wound S-code as additional diagnosis");
+        else if (isBiteCat)   add("W55.01XA", "Cat bite, initial encounter");
+        else if (isBiteHuman) add("W50.3XXA",  "Accidental bite by another person, initial encounter");
+        else                  add("W54.0XXA", "Animal bite — specify species: W54 dog, W55 other mammal, W56 marine animal");
+        add("Z20.3", "Contact with and (suspected) exposure to rabies", "Add when animal rabies status is unknown or bite is unprovoked");
+      } else {
+        add("W19.XXXA", "Unspecified fall, initial encounter", "Replace with specific external cause: W20–W45 for struck/cutting/crushing; Y93.x for activity at time of injury");
+      }
+
+      add("Z23", "Encounter for inoculation and vaccination", "Add to encounter when tetanus prophylaxis (Td, Tdap) is administered");
+      addPathogen();
       return suggestions;
     }
 
     /* ── Pressure Injury ─────────────────────────────────────── */
     if (c.pressureRelated) {
       let siteCode;
-      if      (locHas("sacr","coccyx","tailbone","sacrococcygeal"))     siteCode = "15";
-      else if (isRight && locHas("hip","trochant","femur neck"))        siteCode = "21";
-      else if (isLeft  && locHas("hip","trochant","femur neck"))        siteCode = "22";
-      else if (locHas("hip","trochant"))                                siteCode = "20";
-      else if (isRight && locHas("buttock","ischial","ischium","sit bone")) siteCode = "31";
-      else if (isLeft  && locHas("buttock","ischial","ischium","sit bone")) siteCode = "32";
-      else if (locHas("buttock","ischial","sit bone"))                  siteCode = "30";
-      else if (isRight && locHas("heel"))                               siteCode = "61";
-      else if (isLeft  && locHas("heel"))                               siteCode = "62";
-      else if (locHas("heel"))                                          siteCode = "60";
-      else if (isRight && locHas("ankle","malleolus"))                  siteCode = "51";
-      else if (isLeft  && locHas("ankle","malleolus"))                  siteCode = "52";
-      else if (locHas("ankle","malleolus"))                             siteCode = "50";
-      else if (isRight && locHas("elbow","olecranon"))                  siteCode = "01";
-      else if (isLeft  && locHas("elbow","olecranon"))                  siteCode = "02";
-      else if (locHas("elbow","olecranon"))                             siteCode = "00";
-      else if (locHas("occiput","scalp","head","temple","ear"))         siteCode = "81";
+      if      (locHas("sacr","coccyx","tailbone","sacrococcygeal"))           siteCode = "15";
+      else if (isRight && locHas("hip","trochant","femur neck"))              siteCode = "21";
+      else if (isLeft  && locHas("hip","trochant","femur neck"))              siteCode = "22";
+      else if (locHas("hip","trochant"))                                      siteCode = "20";
+      else if (isRight && locHas("buttock","ischial","ischium","sit bone"))   siteCode = "31";
+      else if (isLeft  && locHas("buttock","ischial","ischium","sit bone"))   siteCode = "32";
+      else if (locHas("buttock","ischial","sit bone"))                        siteCode = "30";
+      else if (isRight && locHas("heel"))                                     siteCode = "61";
+      else if (isLeft  && locHas("heel"))                                     siteCode = "62";
+      else if (locHas("heel"))                                                siteCode = "60";
+      else if (isRight && locHas("ankle","malleolus"))                        siteCode = "51";
+      else if (isLeft  && locHas("ankle","malleolus"))                        siteCode = "52";
+      else if (locHas("ankle","malleolus"))                                   siteCode = "50";
+      else if (isRight && locHas("elbow","olecranon"))                        siteCode = "01";
+      else if (isLeft  && locHas("elbow","olecranon"))                        siteCode = "02";
+      else if (locHas("elbow","olecranon"))                                   siteCode = "00";
+      else if (locHas("occiput","scalp","head","temple","ear"))               siteCode = "81";
       else if (isRight && locHas("upper back","thorac","scapul","shoulder blade")) siteCode = "11";
       else if (isLeft  && locHas("upper back","thorac","scapul","shoulder blade")) siteCode = "12";
-      else if (isRight && locHas("lower back","lumbar","lumbosacral"))  siteCode = "13";
-      else if (isLeft  && locHas("lower back","lumbar","lumbosacral"))  siteCode = "14";
-      else if (locHas("back","spine","thorac","lumbar","vertebra"))     siteCode = "10";
-      else                                                              siteCode = "89";
+      else if (isRight && locHas("lower back","lumbar","lumbosacral"))        siteCode = "13";
+      else if (isLeft  && locHas("lower back","lumbar","lumbosacral"))        siteCode = "14";
+      else if (locHas("back","spine","thorac","lumbar","vertebra"))           siteCode = "10";
+      else                                                                    siteCode = "89";
 
       const s = c.stageText;
       const stageDigit =
-        s.includes("unstageable")         ? "0" :
-        s.includes("stage 1") || s.includes("stage i ") ? "1" :
-        s.includes("stage 2") || s.includes("stage ii")  ? "2" :
-        s.includes("stage 3") || s.includes("stage iii") ? "3" :
-        s.includes("stage 4") || s.includes("stage iv")  ? "4" :
+        s.includes("unstageable")                                            ? "0" :
+        s.includes("stage 1") || s.includes("stage i ")                     ? "1" :
+        s.includes("stage 2") || s.includes("stage ii")                     ? "2" :
+        s.includes("stage 3") || s.includes("stage iii")                    ? "3" :
+        s.includes("stage 4") || s.includes("stage iv")                     ? "4" :
         s.includes("deep tissue") || s.includes("dtpi") || s.includes("dti") ? "6" : "9";
 
       const siteLabels = {
@@ -5707,18 +5809,22 @@
       const stageLabels = { "0":"unstageable","1":"stage 1","2":"stage 2","3":"stage 3","4":"stage 4","6":"deep tissue","9":"unsp. stage" };
       add(`L89.${siteCode}${stageDigit}`, `Pressure injury, ${siteLabels[siteCode] || "other"}, ${stageLabels[stageDigit]}`);
       if (c.potentialBioburden || c.effectiveInfectionSigns?.length) {
-        const cellSite = locHas("leg","foot","ankle","heel") ? "L03.116" : locHas("sacr","buttock","hip") ? "L03.316" : "L03.90";
-        add(cellSite, "Cellulitis of wound site", "Add if clinical infection/cellulitis present");
+        const cellSite = locHas("leg","foot","ankle","heel") ? (isRight ? "L03.116" : isLeft ? "L03.126" : "L03.116")
+                       : locHas("sacr","buttock","hip")     ? "L03.316"
+                       : "L03.90";
+        add(cellSite, "Cellulitis at wound site", "Add if clinical infection/cellulitis present; L03.116/126 lower limb, L03.316 buttock, L03.90 unspecified");
+        addPathogen();
       }
-      if (c.osteomyelitisSignal) add("M86.9", "Osteomyelitis, unspecified", "Confirm with imaging/biopsy; specify site when known");
+      if (c.osteomyelitisSignal) add("M86.9", "Osteomyelitis, unspecified", "Confirm with imaging/biopsy; specify site and chronicity when known");
       return suggestions;
     }
 
     /* ── MASD / IAD ──────────────────────────────────────────── */
     if (c.masdRelated) {
-      add("L22",   "Diaper dermatitis / incontinence-associated dermatitis");
-      add("L30.4", "Erythema intertrigo", "For intertriginous MASD");
-      add("L30.3", "Infective dermatitis", "Add if secondary fungal infection confirmed (+ B37.2 candidiasis)");
+      add("L22",   "Diaper dermatitis / incontinence-associated dermatitis (IAD)");
+      add("L30.4", "Erythema intertrigo", "For intertriginous MASD; moisture-associated peristomal, inframammary, or skin-fold dermatitis");
+      add("L30.3", "Infective dermatitis", "Add if secondary fungal infection confirmed");
+      add("B37.2", "Candidiasis of skin and nail", "Add when candidal superinfection confirmed in IAD/intertriginous area");
       return suggestions;
     }
 
@@ -5737,70 +5843,75 @@
         locHas("chest","thorax","trunk","abdomen")  ? "S20.319A" :
         locHas("back","lumbar")                     ? "S30.819A" :
         "S00.819A";
-      add(skinTearBase, "Superficial injury / skin tear (initial encounter)", "Replace 7th character: A=initial, D=subsequent, S=sequela; verify site code matches exact location");
-      if (c.staleInfo || c.chronic) add("L98.499", "Non-pressure chronic ulcer, unspecified", "Use if skin tear is non-healing > 30 days");
+      add(skinTearBase, "Superficial injury / skin tear, initial encounter", "7th character: A=initial, D=subsequent, S=sequela; verify site subcode matches exact location");
+      add("W19.XXXA", "Unspecified fall, initial encounter", "Replace with specific external cause if mechanism known; W50.x for struck by person");
+      if (c.chronic) add("L98.499", "Non-pressure chronic ulcer, unspecified", "Add if skin tear is non-healing > 30 days");
       return suggestions;
     }
 
     /* ── Burns ───────────────────────────────────────────────── */
     if (c.burnWound) {
-      const isRadBurn = c.radiationWound;
-      if (isRadBurn) {
+      if (c.radiationWound) {
         add("L58.9", "Radiodermatitis, unspecified", "For radiation-related burn/skin damage");
+        add("L58.1", "Chronic radiodermatitis", "Use for delayed radiation injury (weeks–months after treatment)");
         return suggestions;
       }
       const burnClass = normalizeText(row.stage || "");
       const degreeDigit =
-        burnClass.includes("full") || burnClass.includes("3rd") || burnClass.includes("third")      ? "3" :
-        burnClass.includes("partial") || burnClass.includes("2nd") || burnClass.includes("second")   ? "2" :
+        burnClass.includes("full") || burnClass.includes("3rd") || burnClass.includes("third")       ? "3" :
+        burnClass.includes("partial") || burnClass.includes("2nd") || burnClass.includes("second")    ? "2" :
         burnClass.includes("superficial") || burnClass.includes("1st") || burnClass.includes("first") ? "1" : "0";
-
       const burnSiteCode =
-        locHas("head","face","scalp","forehead","chin") ? `T20.${degreeDigit}` :
-        locHas("neck","throat")                         ? `T20.${degreeDigit}` :
-        locHas("chest","trunk","thorax","abdomen","back","buttock") ? `T21.${degreeDigit}` :
-        locHas("shoulder","upper arm")                  ? `T22.${degreeDigit}9` :
-        locHas("forearm","elbow")                       ? `T22.${degreeDigit}9` :
-        locHas("wrist","hand","palm","fingers")          ? `T23.${degreeDigit}92` :
-        locHas("thigh","upper leg")                     ? `T24.${degreeDigit}91` :
-        locHas("lower leg","calf","shin","knee")         ? `T24.${degreeDigit}91` :
-        locHas("ankle","foot","toes")                    ? `T25.${degreeDigit}91` :
+        locHas("head","face","scalp","forehead","chin","nose")          ? `T20.${degreeDigit}` :
+        locHas("neck","throat")                                          ? `T20.${degreeDigit}` :
+        locHas("chest","trunk","thorax","abdomen","back","buttock")      ? `T21.${degreeDigit}` :
+        locHas("shoulder","upper arm")                                   ? `T22.${degreeDigit}9` :
+        locHas("forearm","elbow")                                        ? `T22.${degreeDigit}9` :
+        locHas("wrist","hand","palm","finger")                           ? `T23.${degreeDigit}92` :
+        locHas("thigh","upper leg")                                      ? `T24.${degreeDigit}91` :
+        locHas("lower leg","calf","shin","knee")                         ? `T24.${degreeDigit}91` :
+        locHas("ankle","foot","toe")                                     ? `T25.${degreeDigit}91` :
         `T30.${degreeDigit}`;
       const degreeLabels = {"0":"unsp. degree","1":"superficial (1st)","2":"partial thickness (2nd)","3":"full thickness (3rd)"};
-      add(burnSiteCode + "A", `Burn — ${degreeLabels[degreeDigit]}; initial encounter`, "Add A=initial, D=subsequent, S=sequela; verify specific site code");
-      if (degreeDigit === "3") add("T31.0", "Burns < 10% TBSA", "Add T31.xx for documentation of % body surface area involved");
+      add(burnSiteCode + "A", `Burn — ${degreeLabels[degreeDigit]}; initial encounter`, "7th character: A=initial, D=subsequent, S=sequela; verify specific site subcode and laterality");
+      if (degreeDigit === "3") add("T31.0", "Burns involving less than 10% of body surface", "Add T31.xx TBSA code — payers and trauma registries require total body surface area documentation");
+      add("X00.XXXA", "Exposure to uncontrolled fire in building, initial encounter", "Replace with specific external cause: X00–X08 fire, X10–X19 heat/hot substances, X30 sun exposure");
       return suggestions;
     }
 
     /* ── Diabetic Foot Ulcer ─────────────────────────────────── */
     if (c.diabeticFootRelated) {
       const dmCode = c.woundTypeText.includes("type 1") ? "E10.621" : "E11.621";
-      add(dmCode, `${dmCode === "E10.621" ? "Type 1" : "Type 2"} DM with foot ulcer`, "Verify DM type; add E11.65 if uncontrolled hyperglycemia");
+      add(dmCode, `${dmCode === "E10.621" ? "Type 1" : "Type 2"} DM with foot ulcer`,
+          "Verify DM type; add E11.65 for uncontrolled with hyperglycemia or E11.649 for hypoglycemia");
 
       const l97Site =
         locHas("toe","digit","hallux","metatarsal","1st toe","great toe","first toe") ? `L97.5${side}9` :
-        locHas("ankle","malleolus","gaiter","perimalleolar")                ? `L97.2${side}9` :
-        locHas("plantar","midfoot","arch","sole")                           ? `L97.3${side}9` :
-        locHas("heel")                                                      ? `L97.4${side}9` :
-        locHas("calf","lower leg","shin","tibia","pretibial")               ? `L97.1${side}9` :
-        locHas("foot","dorsum")                                             ? `L97.5${side}9` :
-        locHas("leg","lower extremity","extremity")                         ? `L97.4${side}9` :
-                                                                              `L97.4${side}9`;
+        locHas("ankle","malleolus","gaiter","perimalleolar")                          ? `L97.2${side}9` :
+        locHas("plantar","midfoot","arch","sole")                                     ? `L97.3${side}9` :
+        locHas("heel")                                                                ? `L97.4${side}9` :
+        locHas("calf","lower leg","shin","tibia","pretibial")                         ? `L97.1${side}9` :
+        locHas("foot","dorsum")                                                       ? `L97.5${side}9` :
+        `L97.4${side}9`;
       const l97Labels = {
-        [`L97.119`]:"right calf", [`L97.129`]:"left calf", [`L97.199`]:"unsp. calf",
+        [`L97.119`]:"right calf",[`L97.129`]:"left calf",[`L97.199`]:"unsp. calf",
         [`L97.219`]:"right ankle",[`L97.229`]:"left ankle",[`L97.299`]:"unsp. ankle",
         [`L97.319`]:"right plantar/midfoot",[`L97.329`]:"left plantar/midfoot",[`L97.399`]:"unsp. plantar",
-        [`L97.419`]:"right heel/midfoot",[`L97.429`]:"left heel/midfoot",[`L97.499`]:"unsp. heel",
+        [`L97.419`]:"right heel",[`L97.429`]:"left heel",[`L97.499`]:"unsp. heel",
         [`L97.519`]:"right toe/forefoot",[`L97.529`]:"left toe/forefoot",[`L97.599`]:"unsp. toe",
       };
-      add(l97Site, `Non-pressure chronic ulcer, ${l97Labels[l97Site] || "foot/lower leg"}, unspecified severity`);
+      add(l97Site, `Non-pressure chronic ulcer, ${l97Labels[l97Site] || "foot/lower leg"}, unspecified severity`,
+          "Severity digit: 1=skin breakdown only, 2=fat layer exposed, 3=necrosis of muscle/bone, 9=unspecified; replace 9 when severity is documented");
 
       if (c.potentialBioburden || c.effectiveInfectionSigns?.length) {
-        add("L03.116", "Cellulitis of right lower limb", "Use L03.126 for left; L03.116/126 for leg; L03.89 for foot/toe");
+        const cellCode = isRight ? "L03.116" : isLeft ? "L03.126" : "L03.116";
+        add(cellCode, `Cellulitis of ${isRight ? "right" : isLeft ? "left" : "lower"} lower limb`, "L03.89 for foot or toe cellulitis; L03.116/126 for leg");
+        addPathogen();
       }
       if (c.osteomyelitisSignal) {
         add(isRight ? "M86.171" : isLeft ? "M86.172" : "M86.179",
-          `Osteomyelitis, ${isRight ? "right" : isLeft ? "left" : "unspecified"} ankle and foot`, "Confirm with MRI and bone biopsy");
+            `Osteomyelitis, ${isRight ? "right" : isLeft ? "left" : "unspecified"} ankle and foot`,
+            "Confirm with MRI or bone biopsy; M86.671 for chronic OM; add B95.62 if MRSA confirmed");
       }
       return suggestions;
     }
@@ -5821,18 +5932,20 @@
         "8":"other part of lower leg","9":"unspecified part",
       };
       add(`I83.0${lat}${site5}`,
-        `Varicose veins, ${isRight ? "right" : isLeft ? "left" : "unspecified"} lower extremity — ulcer of ${site5Labels[site5] || "lower leg"}`);
+          `Varicose veins, ${isRight ? "right" : isLeft ? "left" : "unspecified"} lower extremity — ulcer of ${site5Labels[site5] || "lower leg"}`,
+          "Use I83.0x for documented varicosities; use I87.31x for CVI without varicose veins");
       add(`I87.31${side}`,
-        `Chronic venous hypertension with ulcer, ${isRight ? "right" : isLeft ? "left" : "unspecified"} leg`,
-        "Use instead of I83.0xx for non-varicose CVI");
+          `Chronic venous hypertension with ulcer, ${isRight ? "right" : isLeft ? "left" : "unspecified"} leg`,
+          "Primary code for non-varicose CVI ulcer; I87.33x for ulcer with inflammation");
       if (c.potentialBioburden || c.effectiveInfectionSigns?.length) {
         add(isRight ? "L03.116" : isLeft ? "L03.126" : "L03.116",
-          `Cellulitis of ${isRight ? "right" : isLeft ? "left" : "lower"} limb`, "Add if cellulitis present");
+            `Cellulitis of ${isRight ? "right" : isLeft ? "left" : "lower"} limb`, "Add if cellulitis present; do not code if simply wound colonization");
+        addPathogen();
       }
       return suggestions;
     }
 
-    /* ── Arterial / Ischemic ─────────────────────────────────── */
+    /* ── Arterial / Ischemic (incl. mixed venous/arterial) ────── */
     if (c.arterialRelated) {
       const artSite =
         locHas("thigh","femur","upper leg")                                   ? "3" :
@@ -5840,106 +5953,150 @@
         locHas("calf","lower leg","shin","tibia","pretibial")                 ? "4" :
         locHas("heel","midfoot","plantar","arch","sole")                      ? "6" :
         locHas("foot","toe","hallux","dorsum","metatarsal")                   ? "7" :
-        locHas("leg","lower extremity","extremity")                           ? "9" : "9";
+        "9";
       const artSiteLabels = {
         "3":"thigh","4":"calf","5":"ankle",
         "6":"heel and midfoot","7":"other part of foot","9":"lower leg / other",
       };
       const lat2 = isRight ? "1" : isLeft ? "2" : "9";
       add(`I70.${artSite}${lat2}`,
-        `Atherosclerosis, native arteries, ${isRight ? "right" : isLeft ? "left" : "unspecified"} leg — ulceration of ${artSiteLabels[artSite] || "lower extremity"}`);
+          `Atherosclerosis, native arteries, ${isRight ? "right" : isLeft ? "left" : "unspecified"} leg — ulceration of ${artSiteLabels[artSite] || "lower extremity"}`,
+          "Use I70.x3x for bypass graft atherosclerosis; I70.x2x for autologous vein bypass graft");
+      add("I73.9", "Peripheral vascular disease, unspecified", "Secondary code for PAD documentation when specific vascular code does not capture full picture");
       if (c.venousRelated) {
-        add(`I70.${artSite}3${lat2}`,
-          "Atherosclerosis of bypass graft with ulceration", "Use if bypass graft (not native artery)");
+        /* Mixed venous + arterial ulcer — add venous component */
+        const site5 = locHas("ankle","malleolus","gaiter") ? "3" : locHas("calf","lower leg","shin") ? "2" : "8";
+        const lat3  = isRight ? "1" : isLeft ? "2" : "0";
+        add(`I87.31${lat3 === "0" ? side : lat3}`,
+            `Chronic venous hypertension with ulcer — venous component of mixed ulcer`,
+            "Code both arterial (I70.x) and venous (I87.3x) components for mixed etiology; ABI < 0.5 precludes compression");
       }
-      add("I73.9", "Peripheral vascular disease, unspecified", "Secondary code for PAD documentation");
+      if (c.potentialBioburden || c.effectiveInfectionSigns?.length) {
+        add(isRight ? "L03.116" : isLeft ? "L03.126" : "L03.116",
+            "Cellulitis of lower limb", "Add if cellulitis present; ensure adequate perfusion before treating with compression");
+        addPathogen();
+      }
       return suggestions;
     }
 
     /* ── Radiation Wound ─────────────────────────────────────── */
     if (c.radiationWound) {
-      add("L58.9",  "Radiodermatitis, unspecified");
-      add("L58.1",  "Chronic radiodermatitis", "Use for delayed/chronic radiation wound");
-      add("M27.2",  "Inflammatory conditions of jaws — osteoradionecrosis", "If mandibular ORN");
-      add("M90.80", "Osteopathy in other diseases classified elsewhere", "For radiation-induced bone pathology elsewhere");
+      add("L58.9",  "Radiodermatitis, unspecified", "Acute radiation skin reaction during or immediately after treatment");
+      add("L58.1",  "Chronic radiodermatitis", "Use for delayed/chronic radiation wound presenting weeks to years post-treatment");
+      add("L58.0",  "Acute radiodermatitis", "Use when wound presents during active radiation therapy or within 90 days");
+      if (locHas("jaw","mandible","maxilla","oral","mouth")) {
+        add("M27.2",  "Inflammatory conditions of jaws — osteoradionecrosis (ORN)", "For mandibular or maxillary ORN; specify site in documentation");
+      } else {
+        add("M90.80", "Osteopathy in diseases classified elsewhere, unspecified site", "For radiation-induced osteonecrosis at non-jaw sites; specify site subcode");
+      }
+      add("Z85.9",  "Personal history of malignant neoplasm, unspecified", "Add to document prior malignancy that prompted radiation; use Z85.x subcode for specific cancer type");
       return suggestions;
     }
 
     /* ── Vasculitic Ulcer ───────────────────────────────────────── */
     if (c.vasculiticUlcer) {
-      add("L95.9",  "Vasculitis limited to the skin, unspecified");
-      add("L95.8",  "Other vasculitis limited to the skin", "Use for specific named vasculitis with skin ulceration");
-      add("M31.30", "Wegener granulomatosis (GPA), unspecified", "Replace with M31.31 with lung involvement, or M05.xx if RA-associated vasculitis");
-      add("D89.1",  "Cryoglobulinemia", "Add if cryoglobulinemic vasculitis confirmed");
-      add("L98.499","Non-pressure chronic ulcer, unspecified severity", "Use as primary wound code alongside vasculitis code");
+      add("L95.9",  "Vasculitis limited to the skin, unspecified", "Primary code when systemic vasculitis is ruled out or not yet confirmed");
+      add("L95.8",  "Other vasculitis limited to the skin", "Use for specific named cutaneous vasculitis entities");
+      add("M31.30", "Wegener granulomatosis (GPA), unspecified", "Replace with M31.31 if lung involvement, M31.39 for other manifestations");
+      add("M05.70", "Rheumatoid arthritis with rheumatoid factor — RA vasculitis", "Use M05.79 for unspecified site; RA-associated vasculitis is common");
+      add("D89.1",  "Cryoglobulinemia", "Add if cryoglobulinemic vasculitis confirmed on immunofixation");
+      add("L98.499","Non-pressure chronic ulcer, unspecified severity", "Secondary code for the wound manifestation; use alongside primary vasculitis code");
       return suggestions;
     }
 
     /* ── Martorell Ulcer (HILU) ──────────────────────────────── */
     if (c.martorell) {
-      add("I10",    "Essential (primary) hypertension", "Primary driver of Martorell / HILU; document hypertension explicitly");
-      add("L97.899","Non-pressure chronic ulcer of other part of lower leg, unspecified severity", "For lateral leg HILU ulcer; adjust laterality and site as appropriate");
-      add("I77.1",  "Stricture of artery", "Use for arteriolar calcification/occlusion driving ischemia");
-      add("M61.50", "Ossification and calcification of muscle, unspecified", "Consider for Monckeberg medial calcific sclerosis component");
+      add("I10",    "Essential (primary) hypertension", "Primary driver of Martorell / HILU; BP control is the cornerstone of treatment — document explicitly");
+      add("L97.899","Non-pressure chronic ulcer of other part of lower leg, unspecified severity", "For lateral or posterior calf HILU ulcer; L97.891 right / L97.892 left when laterality confirmed");
+      add("I77.1",  "Stricture of artery", "For arteriolar calcification and stenosis driving cutaneous ischemia");
+      add("M61.50", "Ossification and calcification of muscle, unspecified", "Consider for Monckeberg medial calcific sclerosis as contributing mechanism");
+      add("E11.9",  "Type 2 diabetes mellitus, without complications", "Add if DM present — Martorell can co-exist with and be confused for DFU");
       return suggestions;
     }
 
     /* ── Hidradenitis Suppurativa ────────────────────────────── */
     if (c.hidradenitisSuppurativa) {
-      add("L73.2",  "Hidradenitis suppurativa");
-      if (c.stageText.includes("hurley stage i") || c.stageText.includes("hurley i")) {
-        add("L73.2", "HS, Hurley Stage I", "Same code L73.2 — stage documented in clinical notes");
-      }
-      add("L02.90", "Cutaneous abscess, unspecified", "Add when acute abscess is present alongside chronic HS");
-      add("L08.1",  "Erythrasma", "Distinguish from HS in intertriginous areas; HS is the primary code");
-      add("Z87.39", "Personal history of other musculoskeletal disorders", "Add if prior surgical excisions documented");
+      add("L73.2", "Hidradenitis suppurativa", "Single code regardless of Hurley stage — document stage in clinical notes (Hurley I/II/III)");
+      /* Location-specific abscess code */
+      const hsAbscess =
+        locHas("axilla","axillary","armpit")           ? "L02.419" :
+        locHas("groin","inguinal","femoral","inner thigh") ? "L02.214" :
+        locHas("perineal","perianal","perineum","buttock")  ? "L02.213" :
+        locHas("submammary","inframammary","breast")   ? "L02.019" :
+        "L02.90";
+      const hsAbscessLabels = {
+        "L02.419":"axillary abscess","L02.214":"inguinal/femoral abscess","L02.213":"perianal abscess",
+        "L02.019":"submammary abscess","L02.90":"cutaneous abscess, unspecified",
+      };
+      add(hsAbscess, `Cutaneous abscess — ${hsAbscessLabels[hsAbscess]}`, "Add when acute abscess is present alongside chronic HS; code both L73.2 and the abscess code");
+      add("L08.1",  "Erythrasma", "Consider in differential for intertriginous lesions; if present alongside HS, code both");
+      add("E11.9",  "Type 2 diabetes mellitus", "Add if DM present — metabolic comorbidities are common and affect HS severity and surgical healing");
+      add("Z87.39", "Personal history of other musculoskeletal disorders", "Add if prior surgical excisions for HS documented in history");
       return suggestions;
     }
 
     /* ── Graft Wound ─────────────────────────────────────────── */
     if (c.graftWound) {
-      const isDonorSite = c.woundTypeText.includes("donor");
+      const isDonorSite    = c.woundTypeText.includes("donor");
       const isGraftFailure = c.woundTypeText.includes("failure") || c.stageText.includes("failure") || c.stageText.includes("failed");
       if (isDonorSite) {
-        add("T79.8XXA","Other early complications of trauma — donor site, initial encounter", "Use with W-X cause code if trauma origin");
-        add("L98.419", "Non-pressure chronic ulcer of skin not elsewhere classified, unspecified severity", "For non-healing donor site wound");
+        add("Z48.817", "Encounter for surgical aftercare following surgery on the skin and subcutaneous tissue", "Primary code for routine donor site follow-up");
+        add("L98.419", "Non-pressure chronic ulcer of skin, unspecified severity", "Use if donor site is non-healing; specify location when possible");
       } else if (isGraftFailure) {
-        add("T86.821", "Failure of skin graft", "Primary code for failed STSG/FTSG");
-        add("T86.828", "Other complications of skin graft", "Use for partial failure or infection of graft");
+        add("T86.821", "Failure of skin graft", "Primary code for failed STSG or FTSG; add external cause if trauma related");
+        add("T86.822", "Infection of skin graft", "Use when graft failure is due to infection; add pathogen code (B95.62 MRSA, etc.)");
+        add("T86.828", "Other complications of skin graft", "Use for partial failure, contracture, or hypertrophic scarring of graft");
       } else {
-        add("Z48.817","Encounter for surgical aftercare following surgery on the skin and subcutaneous tissue", "Routine post-graft follow-up");
-        add("T86.820","Skin graft (partial/full) — unspecified complication", "If complication NOS");
+        add("Z48.817", "Encounter for surgical aftercare following surgery on the skin and subcutaneous tissue", "Routine post-graft follow-up visit");
+        add("T86.820", "Skin graft — unspecified complication", "Use if complication present but type not yet determined");
       }
       return suggestions;
     }
 
     /* ── Osteomyelitis (standalone) ──────────────────────────── */
     if (c.osteomyelitisSignal) {
-      const omSite =
-        locHas("hand","wrist","finger")                                   ? (isRight ? "M86.141" : isLeft ? "M86.142" : "M86.149") :
-        locHas("foot","toe","ankle","hallux","metatarsal","lower-leg","lower leg","tibia","fibula","leg","lower extremity") ?
-          (isRight ? "M86.171" : isLeft ? "M86.172" : "M86.179") :
-        locHas("thigh","femur","hip","pelvis")                            ? (isRight ? "M86.151" : isLeft ? "M86.152" : "M86.159") :
-        locHas("shoulder","humerus","upper arm")                         ? (isRight ? "M86.111" : isLeft ? "M86.112" : "M86.119") :
-        locHas("forearm","radius","ulna","elbow")                        ? (isRight ? "M86.131" : isLeft ? "M86.132" : "M86.139") :
-        locHas("spine","vertebra","lumbar","thorac","cervical","sacral") ? "M86.18" :
-        locHas("jaw","mandible","maxilla")                               ? "M27.3" :
-        "M86.9";
-      add(omSite, `Osteomyelitis — ${isRight ? "right" : isLeft ? "left" : "unspecified"} site`, "Confirm with imaging and bone biopsy; refine code when type/chronicity established");
-      if (omSite !== "M86.9") add("M86.9", "Osteomyelitis, unspecified", "Use if site/type pending confirmation");
+      const isAcute   = c.woundAgeDays != null && c.woundAgeDays < 30;
+      const isChronic = c.chronic;
+      const omPrefix  = isChronic ? "M86.6" : isAcute ? "M86.1" : "M86.";
+
+      if (locHas("jaw","mandible","maxilla","oral")) {
+        add("M27.3", "Periradicular abscess / osteomyelitis of jaw", "Specify acute vs. chronic; M27.2 for osteoradionecrosis of jaw");
+      } else {
+        const omSuffix =
+          locHas("hand","wrist","finger","metacarpal")                                           ? (isRight ? "41" : isLeft ? "42" : "49") :
+          locHas("foot","toe","ankle","hallux","metatarsal","tibia","fibula","lower leg","lower extremity") ? (isRight ? "71" : isLeft ? "72" : "79") :
+          locHas("thigh","femur","hip","pelvis")                                                 ? (isRight ? "51" : isLeft ? "52" : "59") :
+          locHas("shoulder","humerus","upper arm","clavicle","scapula")                          ? (isRight ? "11" : isLeft ? "12" : "19") :
+          locHas("forearm","radius","ulna","elbow")                                              ? (isRight ? "31" : isLeft ? "32" : "39") :
+          locHas("spine","vertebra","lumbar","thorac","cervical","sacral","vertebral")            ? "8" :
+          null;
+
+        if (omSuffix) {
+          const omCode = isChronic ? `M86.6${omSuffix}` : isAcute ? `M86.1${omSuffix}` : `M86.9`;
+          const omType = isChronic ? "Chronic osteomyelitis" : isAcute ? "Acute osteomyelitis (other)" : "Osteomyelitis, unspecified";
+          const omSide = isRight ? "right" : isLeft ? "left" : "unspecified";
+          add(omCode, `${omType} — ${omSide} site`, "Confirm with MRI, bone scan, or bone biopsy; M86.4x for chronic OM with draining sinus; M86.5x for other chronic hematogenous OM");
+          if (!isChronic && !isAcute) add("M86.9", "Osteomyelitis, unspecified", "Refine to M86.1x (acute) or M86.6x (chronic) once chronicity is established");
+        } else {
+          add("M86.9", "Osteomyelitis, unspecified site/type", "Specify anatomical site (M86.1x acute, M86.6x chronic) when available; confirm with imaging and culture");
+        }
+      }
+      add("B95.62", "MRSA as causative organism", "Add when MRSA confirmed on bone biopsy culture; B95.8 for other Staphylococcus, B96.89 for other bacteria");
       return suggestions;
     }
 
     /* ── Surgical Wound ──────────────────────────────────────── */
     if (c.surgicalWound) {
-      add("T81.31XA", "Disruption of external operation (wound dehiscence), initial encounter");
-      add("T81.32XA", "Disruption of internal operation wound NEC, initial encounter", "Use if deep fascia/internal layer involved");
-      add("T81.41XA", "Infection following a procedure, initial encounter");
-      add("T81.42XA", "Infection following a procedure — deep incisional SSI, initial encounter");
-      add("T81.49XA", "Other infection following procedure, initial encounter");
-      if (c.woundTypeText.includes("sternal") || c.locationText.includes("sternum") || c.locationText.includes("chest")) {
-        add("T81.31XA", "Sternal wound dehiscence — also see J98.19 or specific procedural complication codes");
+      add("T81.31XA", "Disruption of external operation wound (dehiscence), initial encounter", "For superficial layer dehiscence; use D for subsequent encounters");
+      add("T81.32XA", "Disruption of internal operation wound, NEC, initial encounter", "Use if deep fascial layer or internal closure is disrupted");
+      add("T81.41XA", "Infection following procedure — superficial incisional SSI, initial encounter", "CDC/NHSN SSI classification: superficial (skin/subcutaneous); T81.42 for deep incisional");
+      add("T81.42XA", "Infection following procedure — deep incisional SSI, initial encounter", "Involves fascia or muscle layer; T81.43XA for organ/space SSI");
+      add("T81.43XA", "Infection following procedure — organ/space SSI, initial encounter", "Involves any anatomical structure other than incision; add organ-specific code");
+      if (c.woundTypeText.includes("sternal") || locHas("sternum","sternal","chest","thorax","pectoral")) {
+        add("J98.19",   "Other diseases of pleura / mediastinum", "Consider for deep sternal wound with mediastinal involvement (mediastinitis)");
       }
+      add("Z48.817", "Encounter for surgical aftercare following surgery on the skin and subcutaneous tissue", "Add for routine follow-up visits without active complication");
+      if (c.potentialBioburden || c.effectiveInfectionSigns?.length) addPathogen();
       return suggestions;
     }
 
