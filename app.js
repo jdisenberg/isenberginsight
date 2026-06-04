@@ -371,6 +371,8 @@
     narrativePanel: document.getElementById("narrativePanel"),
     narrativeText: document.getElementById("narrativeText"),
     narrativeStyle: document.getElementById("narrativeStyle"),
+    cmsGuidePanel: document.getElementById("cmsGuidePanel"),
+    cmsGuideText: document.getElementById("cmsGuideText"),
     nameGateOverlay: document.getElementById("nameGateOverlay"),
     authTitle: document.getElementById("authTitle"),
     authLoginForm: document.getElementById("authLoginForm"),
@@ -1085,8 +1087,17 @@
     function setupCanvas() {
       const c = cvs(); if (!c || !photo) return;
       const wrap = $("azCanvasWrap");
-      const dispW = Math.min((wrap ? wrap.clientWidth : 480) || 480, 720);
-      const dispH = Math.round(dispW * photoH / photoW);
+      let dispW = Math.min((wrap ? wrap.clientWidth : 480) || 480, 720);
+      let dispH = Math.round(dispW * photoH / photoW);
+      /* Cap the photo to roughly half the viewport so the ruler/wound controls
+         and results below it stay on screen (especially on phones, where a tall
+         portrait photo would otherwise push them out of view). Uniform scale. */
+      const vh = window.visualViewport?.height || window.innerHeight || 640;
+      const maxH = Math.max(200, Math.round(vh * 0.5));
+      if (dispH > maxH) {
+        dispH = maxH;
+        dispW = Math.round(maxH * photoW / photoH);
+      }
       c.width = canvW = dispW; c.height = canvH = dispH;
       imgScale = dispW / photoW;
       drawCanvas();
@@ -1496,6 +1507,17 @@
         c.addEventListener("touchcancel", onDrawEnd, { passive: false });
       }
       $("analyzerRulerCm")?.addEventListener("input", () => { drawCanvas(); updateRulerHint(); });
+
+      /* re-fit the canvas on rotation / viewport changes while the modal is open */
+      let resizeRaf = 0;
+      const onResize = () => {
+        const m = $("woundAnalyzerModal");
+        if (!m || m.hidden || !photo) return;
+        cancelAnimationFrame(resizeRaf);
+        resizeRaf = requestAnimationFrame(setupCanvas);
+      };
+      window.addEventListener("resize", onResize);
+      window.addEventListener("orientationchange", onResize);
     }
 
     /* expose globally for event delegation */
@@ -2781,9 +2803,11 @@
     els.previewHead.innerHTML = "";
     els.previewBody.innerHTML = "";
     els.narrativeText.innerHTML = '<p class="narrative-empty">Generate considerations to create chart narratives.</p>';
+    if (els.cmsGuideText) els.cmsGuideText.innerHTML = "";
 
     els.narrativePanel.classList.add("hidden");
     els.previewPanel.classList.add("hidden");
+    if (els.cmsGuidePanel) els.cmsGuidePanel.classList.add("hidden");
     if (els.auditLogPanel) els.auditLogPanel.classList.add("hidden");
     exitPrintPacketMode();
   }
@@ -7894,18 +7918,12 @@
         .filter(Boolean)
         .join("");
 
-      const cmsGuideBlocks = patient.wounds
-        .map((row) => renderCMSGuideHtml(row))
-        .filter(Boolean)
-        .join("");
-
       return `
         <section class="narrative-patient">
           <div class="narrative-patient-header">
             <strong>${escapeHtml(patient.patientName)}</strong>
             <button class="copy-narrative-btn" type="button" data-narrative="${escapeHtml(fullNarrative)}" title="Copy narrative to clipboard">Copy Narrative</button>
           </div>
-          ${cmsGuideBlocks || ""}
           <p class="narrative-summary">${escapeHtml(fullNarrative)}</p>
           ${pushBlocks}
           ${icd10Blocks || ""}
@@ -7914,6 +7932,36 @@
     });
 
     return patientBlocks.join("");
+  }
+
+  /* CMS Coverage & Documentation Guide — rendered in its own panel above the
+     Chart Narrative (not embedded in the narrative text). */
+  function buildCMSGuidePanel(rows) {
+    if (!rows || !rows.length) return "";
+
+    const patientGroups = new Map();
+    for (const row of rows) {
+      const patientName = normalizePersonName(String(row.name || "Unknown patient").trim()) || "Unknown patient";
+      const patientMrn = String(row.mrn || "").trim();
+      const patientKey = `${patientName}|${patientMrn}`;
+      if (!patientGroups.has(patientKey)) patientGroups.set(patientKey, { patientName, wounds: [] });
+      patientGroups.get(patientKey).wounds.push(row);
+    }
+
+    return Array.from(patientGroups.values()).map((patient) => {
+      const guideBlocks = patient.wounds
+        .map((row) => renderCMSGuideHtml(row))
+        .filter(Boolean)
+        .join("");
+      if (!guideBlocks) return "";
+      return `
+        <section class="narrative-patient">
+          <div class="narrative-patient-header">
+            <strong>${escapeHtml(patient.patientName)}</strong>
+          </div>
+          ${guideBlocks}
+        </section>`;
+    }).filter(Boolean).join("");
   }
 
   function defaultHistory() {
@@ -9496,6 +9544,10 @@
 
       renderPreview(Object.keys(displayRows[0] || {}), displayRows, latestRows);
       els.narrativeText.innerHTML = buildChartNarrative(latestRows, narrativeStyle);
+
+      const cmsGuideHtml = buildCMSGuidePanel(latestRows);
+      if (els.cmsGuideText) els.cmsGuideText.innerHTML = cmsGuideHtml;
+      if (els.cmsGuidePanel) els.cmsGuidePanel.classList.toggle("hidden", !cmsGuideHtml);
 
       els.narrativePanel.classList.remove("hidden");
       els.previewPanel.classList.remove("hidden");
