@@ -62,6 +62,8 @@ export async function onRequest(context) {
       do {
         const page = await env.CICATRIX_AUDIT.list({ limit: 1000, cursor });
         for (const k of page.keys) {
+          /* Skip user-account records (managed by /auth); keep only audit events */
+          if (k.name.startsWith("user::")) continue;
           const raw = await env.CICATRIX_AUDIT.get(k.name);
           if (raw) {
             try { all.push(JSON.parse(raw)); } catch { /* skip malformed */ }

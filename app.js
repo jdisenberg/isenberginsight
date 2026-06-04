@@ -239,12 +239,24 @@
     narrativeText: document.getElementById("narrativeText"),
     narrativeStyle: document.getElementById("narrativeStyle"),
     nameGateOverlay: document.getElementById("nameGateOverlay"),
-    nameGateForm: document.getElementById("nameGateForm"),
-    nameGateInput: document.getElementById("nameGateInput"),
-    nameGateClinicalAck: document.getElementById("nameGateClinicalAck"),
-    nameGateAgreeAck: document.getElementById("nameGateAgreeAck"),
+    authTitle: document.getElementById("authTitle"),
+    authLoginForm: document.getElementById("authLoginForm"),
+    authRegisterForm: document.getElementById("authRegisterForm"),
+    authForgotForm: document.getElementById("authForgotForm"),
+    loginUsername: document.getElementById("loginUsername"),
+    loginPassword: document.getElementById("loginPassword"),
+    loginError: document.getElementById("loginError"),
+    registerUsername: document.getElementById("registerUsername"),
+    registerEmail: document.getElementById("registerEmail"),
+    registerPassword: document.getElementById("registerPassword"),
+    registerPasswordConfirm: document.getElementById("registerPasswordConfirm"),
+    registerClinicalAck: document.getElementById("registerClinicalAck"),
+    registerAgreeAck: document.getElementById("registerAgreeAck"),
+    registerError: document.getElementById("registerError"),
+    forgotUsername: document.getElementById("forgotUsername"),
+    forgotError: document.getElementById("forgotError"),
+    forgotSuccess: document.getElementById("forgotSuccess"),
     nameGateTermsLink: document.getElementById("nameGateTermsLink"),
-    nameGateError: document.getElementById("nameGateError"),
     termsDialog: document.getElementById("termsDialog"),
     termsDialogClose: document.getElementById("termsDialogClose"),
     appRoot: document.getElementById("appRoot"),
@@ -254,6 +266,11 @@
     auditLogSummary: document.getElementById("auditLogSummary"),
     auditLogHead: document.querySelector("#auditLogTable thead"),
     auditLogBody: document.querySelector("#auditLogTable tbody"),
+    userAdminSection: document.getElementById("userAdminSection"),
+    userAdminRefresh: document.getElementById("userAdminRefresh"),
+    userAdminMeta: document.getElementById("userAdminMeta"),
+    userAdminHead: document.querySelector("#userAdminTable thead"),
+    userAdminBody: document.querySelector("#userAdminTable tbody"),
     previewPanel: document.getElementById("previewPanel"),
     printPacketButton: document.getElementById("printPacketButton"),
     previewHead: document.querySelector("#previewTable thead"),
@@ -672,13 +689,65 @@
     return "Ready. Enter wound details, then click Generate Considerations.";
   }
 
-  function setNameGateError(message = "") {
-    if (els.nameGateError) els.nameGateError.textContent = message;
+  /* ── Authentication ──────────────────────────────────────────────────── */
+
+  const AUTH_STORAGE_KEY = "CICATRIX_AUTH_V1";
+  let authState = null; /* { username, token, role, email } once signed in */
+
+  const AUTH_ERROR_MESSAGES = {
+    username_required: "Enter a username.",
+    username_too_short: "Username must be at least 3 characters.",
+    password_too_short: "Password must be at least 8 characters.",
+    terms_required: "You must accept the terms to register.",
+    username_taken: "That username is already taken.",
+    credentials_required: "Enter your username and password.",
+    invalid_credentials: "Incorrect username or password.",
+    not_authorized: "You are not authorized to do that.",
+    user_not_found: "That account no longer exists.",
+    cannot_delete_self: "You cannot delete the account you are signed in with.",
+    kv_not_configured: "Account service is not set up yet. Contact the administrator.",
+  };
+
+  function authErrorText(code) {
+    return AUTH_ERROR_MESSAGES[code] || "Something went wrong. Please try again.";
   }
 
-  function resetNameGateAcknowledgements() {
-    if (els.nameGateClinicalAck) els.nameGateClinicalAck.checked = false;
-    if (els.nameGateAgreeAck) els.nameGateAgreeAck.checked = false;
+  function loadStoredAuth() {
+    try {
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.username && parsed.token) return parsed;
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  function saveStoredAuth(obj) {
+    try { localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(obj)); } catch { /* ignore */ }
+  }
+
+  function clearStoredAuth() {
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch { /* ignore */ }
+  }
+
+  function isCurrentUserAdmin() {
+    return Boolean(authState && authState.role === "admin");
+  }
+
+  /** POST to /auth. Returns { ok, status, data, networkError }. */
+  async function authFetch(payload) {
+    try {
+      const res = await fetch("/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      let data = {};
+      try { data = await res.json(); } catch { /* non-JSON */ }
+      return { ok: res.ok && data.ok !== false, status: res.status, data, networkError: false };
+    } catch (err) {
+      return { ok: false, status: 0, data: {}, networkError: true };
+    }
   }
 
   function setAppAccessLocked(isLocked) {
@@ -694,21 +763,53 @@
         els.appRoot.removeAttribute("aria-hidden");
       }
     }
-    if (locked) setTimeout(() => els.nameGateInput?.focus(), 0);
+    if (locked) setTimeout(() => focusActiveAuthView(), 0);
   }
 
-  function initializeNameGate() {
-    const savedLabel = loadUserLabel();
-    if (els.nameGateInput) els.nameGateInput.value = savedLabel;
-    resetNameGateAcknowledgements();
-    if (!els.nameGateOverlay || !els.nameGateForm) {
-      setAppAccessLocked(false);
-      setNameGateError("");
-      return true;
-    }
-    setAppAccessLocked(true);
-    setNameGateError("");
-    return false;
+  function activeAuthView() {
+    if (els.authRegisterForm && !els.authRegisterForm.classList.contains("hidden")) return "register";
+    if (els.authForgotForm && !els.authForgotForm.classList.contains("hidden")) return "forgot";
+    return "login";
+  }
+
+  function focusActiveAuthView() {
+    const view = activeAuthView();
+    if (view === "register") els.registerUsername?.focus();
+    else if (view === "forgot") els.forgotUsername?.focus();
+    else els.loginUsername?.focus();
+  }
+
+  function showAuthView(view) {
+    const map = {
+      login: { form: els.authLoginForm, title: "Sign In" },
+      register: { form: els.authRegisterForm, title: "Create Account" },
+      forgot: { form: els.authForgotForm, title: "Reset Password" },
+    };
+    Object.values(map).forEach((m) => m.form && m.form.classList.add("hidden"));
+    const target = map[view] || map.login;
+    if (target.form) target.form.classList.remove("hidden");
+    if (els.authTitle) els.authTitle.textContent = target.title;
+    if (els.loginError) els.loginError.textContent = "";
+    if (els.registerError) els.registerError.textContent = "";
+    if (els.forgotError) els.forgotError.textContent = "";
+    if (els.forgotSuccess) els.forgotSuccess.textContent = "";
+    setTimeout(() => focusActiveAuthView(), 0);
+  }
+
+  function applyAuthSuccess(data, token) {
+    authState = {
+      username: data.username,
+      token,
+      role: data.role || "user",
+      email: data.email || "",
+    };
+    saveStoredAuth({ username: authState.username, token });
+    if (els.settingsUserLabel) els.settingsUserLabel.value = authState.username;
+    setAppAccessLocked(false);
+    if (els.userAdminSection) els.userAdminSection.classList.toggle("hidden", !isCurrentUserAdmin());
+    logUsageEvent("login", { user: authState.username, role: authState.role }, { cloud: true, local: true });
+    logSiteAccessOnce();
+    setStatus(readyStatusText());
   }
 
   function openTermsDialog(event) {
@@ -728,7 +829,7 @@
     if (!document.body.classList.contains("name-gate-active")) return;
     if (!els.nameGateOverlay || els.nameGateOverlay.contains(event.target)) return;
     event.stopPropagation();
-    els.nameGateInput?.focus();
+    focusActiveAuthView();
   }
 
   function logSiteAccessOnce() {
@@ -737,26 +838,227 @@
     logUsageEvent("site_access", { path: window.location.pathname || "/" });
   }
 
-  function handleNameGateSubmit(event) {
+  async function handleLoginSubmit(event) {
     event.preventDefault();
-    const previousLabel = loadUserLabel();
-    const saved = saveUserLabel(els.nameGateInput?.value || "");
-    if (!saved) {
-      setNameGateError("Enter your name to continue.");
-      els.nameGateInput?.focus();
+    if (els.loginError) els.loginError.textContent = "";
+    const username = String(els.loginUsername?.value || "").trim();
+    const password = String(els.loginPassword?.value || "");
+    if (!username || !password) {
+      if (els.loginError) els.loginError.textContent = "Enter your username and password.";
       return;
     }
-    if (!els.nameGateClinicalAck?.checked || !els.nameGateAgreeAck?.checked) {
-      setNameGateError("Review and check both acknowledgements to continue.");
-      if (!els.nameGateClinicalAck?.checked) els.nameGateClinicalAck?.focus();
-      else els.nameGateAgreeAck?.focus();
+    const submitBtn = els.authLoginForm?.querySelector("button[type=submit]");
+    if (submitBtn) submitBtn.disabled = true;
+    const res = await authFetch({ action: "login", username, password });
+    if (submitBtn) submitBtn.disabled = false;
+    if (res.ok) {
+      if (els.loginPassword) els.loginPassword.value = "";
+      applyAuthSuccess(res.data, res.data.token);
       return;
     }
-    setNameGateError("");
-    setAppAccessLocked(false);
-    logUsageEvent(previousLabel === saved ? "name_gate_completed" : "user_label_updated", { user_label: saved }, { cloud: false, local: true });
-    logSiteAccessOnce();
-    setStatus(readyStatusText());
+    if (res.networkError) {
+      if (els.loginError) els.loginError.textContent = "Network error — check your connection and try again.";
+      return;
+    }
+    if (els.loginError) els.loginError.textContent = authErrorText(res.data.error);
+  }
+
+  async function handleRegisterSubmit(event) {
+    event.preventDefault();
+    if (els.registerError) els.registerError.textContent = "";
+    const username = String(els.registerUsername?.value || "").trim();
+    const email = String(els.registerEmail?.value || "").trim();
+    const password = String(els.registerPassword?.value || "");
+    const confirm = String(els.registerPasswordConfirm?.value || "");
+
+    if (username.length < 3) {
+      els.registerError.textContent = "Username must be at least 3 characters.";
+      return;
+    }
+    if (password.length < 8) {
+      els.registerError.textContent = "Password must be at least 8 characters.";
+      return;
+    }
+    if (password !== confirm) {
+      els.registerError.textContent = "Passwords do not match.";
+      return;
+    }
+    if (!els.registerClinicalAck?.checked || !els.registerAgreeAck?.checked) {
+      els.registerError.textContent = "Check both acknowledgements to continue.";
+      return;
+    }
+    const submitBtn = els.authRegisterForm?.querySelector("button[type=submit]");
+    if (submitBtn) submitBtn.disabled = true;
+    const res = await authFetch({ action: "register", username, email, password, terms_accepted: true });
+    if (submitBtn) submitBtn.disabled = false;
+    if (res.ok) {
+      if (els.registerPassword) els.registerPassword.value = "";
+      if (els.registerPasswordConfirm) els.registerPasswordConfirm.value = "";
+      applyAuthSuccess(res.data, res.data.token);
+      return;
+    }
+    if (res.networkError) {
+      els.registerError.textContent = "Network error — check your connection and try again.";
+      return;
+    }
+    els.registerError.textContent = authErrorText(res.data.error);
+  }
+
+  async function handleForgotSubmit(event) {
+    event.preventDefault();
+    if (els.forgotError) els.forgotError.textContent = "";
+    if (els.forgotSuccess) els.forgotSuccess.textContent = "";
+    const username = String(els.forgotUsername?.value || "").trim();
+    if (!username) {
+      els.forgotError.textContent = "Enter your username.";
+      return;
+    }
+    const submitBtn = els.authForgotForm?.querySelector("button[type=submit]");
+    if (submitBtn) submitBtn.disabled = true;
+    const res = await authFetch({ action: "forgot", username });
+    if (submitBtn) submitBtn.disabled = false;
+    if (res.networkError) {
+      els.forgotError.textContent = "Network error — check your connection and try again.";
+      return;
+    }
+    els.forgotSuccess.textContent = "If that account exists, your administrator has been notified to reset it.";
+  }
+
+  /** On load: try to resume a stored session; otherwise lock to the login view. */
+  async function initializeAuth() {
+    if (!els.nameGateOverlay || !els.authLoginForm) {
+      /* Auth UI missing — fail open so the app is still usable */
+      setAppAccessLocked(false);
+      return true;
+    }
+    const stored = loadStoredAuth();
+    setAppAccessLocked(true);
+    showAuthView("login");
+    if (!stored) return false;
+
+    const res = await authFetch({ action: "verify", username: stored.username, token: stored.token });
+    if (res.ok) {
+      applyAuthSuccess(res.data, stored.token);
+      return true;
+    }
+    if (res.networkError) {
+      /* Backend unreachable but we have a cached session — trust it so a
+         transient outage doesn't lock the user out. */
+      authState = { username: stored.username, token: stored.token, role: stored.role || "user", email: "" };
+      setAppAccessLocked(false);
+      if (els.userAdminSection) els.userAdminSection.classList.toggle("hidden", !isCurrentUserAdmin());
+      logSiteAccessOnce();
+      setStatus(readyStatusText());
+      return true;
+    }
+    /* Session rejected (expired/invalid) — clear it and show login */
+    clearStoredAuth();
+    return false;
+  }
+
+  /* ── Admin: user management (audit page) ─────────────────────────────── */
+
+  function adminCreds() {
+    return { admin_username: authState?.username || "", admin_token: authState?.token || "" };
+  }
+
+  async function loadUserAdmin() {
+    if (!isCurrentUserAdmin() || !els.userAdminBody) return;
+    if (els.userAdminMeta) els.userAdminMeta.textContent = "Loading accounts…";
+    const res = await authFetch({ action: "admin_list", ...adminCreds() });
+    if (!res.ok) {
+      if (els.userAdminMeta) {
+        els.userAdminMeta.textContent = res.networkError
+          ? "Could not reach the account service."
+          : authErrorText(res.data.error);
+      }
+      return;
+    }
+    renderUserAdmin(res.data.users || []);
+  }
+
+  function renderUserAdmin(users) {
+    if (!els.userAdminBody || !els.userAdminHead) return;
+    const flagged = users.filter((u) => u.needs_password_reset).length;
+    if (els.userAdminMeta) {
+      els.userAdminMeta.textContent = `${users.length} account${users.length === 1 ? "" : "s"}` +
+        (flagged ? ` · ${flagged} awaiting password reset` : "");
+    }
+    els.userAdminHead.innerHTML =
+      "<tr><th>Username</th><th>Role</th><th>Email</th><th>Created</th><th>Last Login</th><th>Status</th><th>Actions</th></tr>";
+    if (!users.length) {
+      els.userAdminBody.innerHTML = '<tr><td colspan="7">No accounts registered yet.</td></tr>';
+      return;
+    }
+    els.userAdminBody.innerHTML = users.map((u) => {
+      const flaggedRow = u.needs_password_reset ? ' class="user-flagged"' : "";
+      const status = u.needs_password_reset
+        ? `<span class="user-badge user-badge-warn">Reset requested${u.reset_requested_at ? " · " + escapeHtml(formatAuditTimestamp(u.reset_requested_at)) : ""}</span>`
+        : '<span class="user-badge">Active</span>';
+      const roleBtn = u.role === "admin" ? "Make User" : "Make Admin";
+      const uname = escapeHtml(u.username);
+      return `<tr${flaggedRow}>
+        <td>${uname}</td>
+        <td>${escapeHtml(u.role || "user")}</td>
+        <td>${escapeHtml(u.email || "—")}</td>
+        <td>${escapeHtml(formatAuditTimestamp(u.created_at) || "—")}</td>
+        <td>${escapeHtml(formatAuditTimestamp(u.last_login_at) || "—")}</td>
+        <td>${status}</td>
+        <td class="user-actions">
+          <button type="button" data-user-action="reset" data-user="${uname}">Reset Password</button>
+          <button type="button" data-user-action="role" data-user="${uname}" data-role="${escapeHtml(u.role || "user")}">${roleBtn}</button>
+          <button type="button" data-user-action="rename" data-user="${uname}">Rename</button>
+          <button type="button" data-user-action="email" data-user="${uname}">Edit Email</button>
+          <button type="button" data-user-action="delete" data-user="${uname}" class="user-danger">Delete</button>
+        </td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function handleUserAdminAction(action, username, extra = {}) {
+    const res = await authFetch({ action, target: username, ...extra, ...adminCreds() });
+    if (res.ok) {
+      logUsageEvent("admin_user_action", { sub_action: action, target: username }, { cloud: true, local: true });
+      await loadUserAdmin();
+      setStatus(`Account "${username}" updated.`);
+      return true;
+    }
+    const msg = res.networkError ? "Network error — try again." : authErrorText(res.data.error);
+    setStatus(msg);
+    window.alert(msg);
+    return false;
+  }
+
+  async function onUserAdminClick(event) {
+    const btn = event.target.closest("[data-user-action]");
+    if (!btn) return;
+    const action = btn.dataset.userAction;
+    const username = btn.dataset.user;
+    if (!username) return;
+
+    if (action === "reset") {
+      const pw = window.prompt(`Enter a new password for "${username}" (8+ characters):`);
+      if (pw == null) return;
+      if (pw.length < 8) { window.alert("Password must be at least 8 characters."); return; }
+      await handleUserAdminAction("admin_reset", username, { new_password: pw });
+    } else if (action === "role") {
+      const newRole = btn.dataset.role === "admin" ? "user" : "admin";
+      if (!window.confirm(`Change "${username}" to role "${newRole}"?`)) return;
+      await handleUserAdminAction("admin_update", username, { role: newRole });
+    } else if (action === "rename") {
+      const newName = window.prompt(`New username for "${username}":`, username);
+      if (newName == null) return;
+      const trimmed = newName.trim();
+      if (trimmed.length < 3) { window.alert("Username must be at least 3 characters."); return; }
+      await handleUserAdminAction("admin_update", username, { new_username: trimmed });
+    } else if (action === "email") {
+      const email = window.prompt(`Email for "${username}":`, "");
+      if (email == null) return;
+      await handleUserAdminAction("admin_update", username, { email: email.trim() });
+    } else if (action === "delete") {
+      if (!window.confirm(`Permanently delete account "${username}"? This cannot be undone.`)) return;
+      await handleUserAdminAction("admin_delete", username);
+    }
   }
 
 
@@ -832,6 +1134,7 @@
   }
 
   function resolveAuditActor() {
+    if (authState && authState.username) return authState.username;
     const direct = String(window.WOUND_HISTORY_ACTOR || "").trim();
     if (direct) return direct;
     const savedLabel = loadUserLabel();
@@ -7487,8 +7790,17 @@
     renderSuppliesPanel();
     renderSources();
     ensureManualWoundCard();
-    if (els.nameGateForm) {
-      els.nameGateForm.addEventListener("submit", handleNameGateSubmit);
+    if (els.authLoginForm) els.authLoginForm.addEventListener("submit", handleLoginSubmit);
+    if (els.authRegisterForm) els.authRegisterForm.addEventListener("submit", handleRegisterSubmit);
+    if (els.authForgotForm) els.authForgotForm.addEventListener("submit", handleForgotSubmit);
+    if (els.nameGateOverlay) {
+      els.nameGateOverlay.addEventListener("click", (event) => {
+        const navLink = event.target.closest("[data-auth-nav]");
+        if (navLink) {
+          event.preventDefault();
+          showAuthView(navLink.dataset.authNav);
+        }
+      });
     }
     if (els.nameGateTermsLink) {
       els.nameGateTermsLink.addEventListener("click", openTermsDialog);
@@ -7500,7 +7812,7 @@
       if (event.key === "Escape" && els.termsDialog && !els.termsDialog.hidden) closeTermsDialog();
     });
     document.addEventListener("focusin", guardNameGateFocus);
-    if (initializeNameGate()) logSiteAccessOnce();
+    initializeAuth();
     if (els.narrativeStyle) {
       els.narrativeStyle.addEventListener("change", (event) => {
         saveNarrativeStyle(event.target.value);
@@ -7568,9 +7880,22 @@
         els.auditLogPanel.classList.remove("hidden");
         els.auditLogPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       }
+      /* Admin-only user management */
+      if (els.userAdminSection) {
+        const admin = isCurrentUserAdmin();
+        els.userAdminSection.classList.toggle("hidden", !admin);
+        if (admin) loadUserAdmin();
+      }
       /* Then load remote */
       await loadRemoteAuditLog();
     };
+
+    if (els.userAdminRefresh) {
+      els.userAdminRefresh.addEventListener("click", () => loadUserAdmin());
+    }
+    if (els.userAdminBody) {
+      els.userAdminBody.addEventListener("click", onUserAdminClick);
+    }
 
     if (els.settingsButton) {
       els.settingsButton.addEventListener("click", (e) => {

@@ -1504,6 +1504,122 @@ body.name-gate-active {
   font-weight: 800;
 }
 
+/* ── Auth views (login / register / forgot) ───────────────── */
+.auth-card {
+  gap: 12px;
+}
+
+.auth-view {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-view.hidden {
+  display: none !important;
+}
+
+.auth-links {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 0.86rem;
+}
+
+.auth-links a {
+  color: #6b1f2a;
+  font-weight: 800;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.auth-sep {
+  margin: 0 8px;
+  color: #b89aa0;
+}
+
+.auth-optional {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.auth-success {
+  min-height: 1.2em;
+  margin: -4px 0 0;
+  color: #1f7a4d;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+/* ── Admin user management (audit page) ───────────────────── */
+.user-admin {
+  margin: 14px 0 18px;
+  padding: 14px;
+  border: 1px solid rgba(107, 31, 42, 0.18);
+  border-radius: 12px;
+  background: #fdf9f7;
+}
+
+.user-admin.hidden {
+  display: none !important;
+}
+
+.user-admin h3 {
+  margin: 0;
+  color: #4a1520;
+}
+
+#userAdminTable th,
+#userAdminTable td {
+  font-size: 0.82rem;
+  vertical-align: middle;
+}
+
+.user-flagged {
+  background: #fff4e5;
+}
+
+.user-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: #e6f4ec;
+  color: #1f7a4d;
+  white-space: nowrap;
+}
+
+.user-badge-warn {
+  background: #fde6c8;
+  color: #9a5a12;
+}
+
+.user-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.user-actions button {
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  border-radius: 8px;
+  background: #f0f8fd;
+  color: #5a1e28;
+  border: 1px solid rgba(107, 31, 42, 0.2);
+  box-shadow: 0 2px 0 rgba(107, 31, 42, 0.18);
+}
+
+.user-actions button:hover {
+  background: #e2f0f9;
+}
+
+.user-actions button.user-danger {
+  background: #fbeaea;
+  color: #a12626;
+  border-color: rgba(161, 38, 38, 0.3);
+}
+
 .terms-dialog {
   position: fixed;
   inset: 0;

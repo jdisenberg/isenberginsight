@@ -121,6 +121,22 @@
         </div>
         <p class="hint">Tracks site access, entry usage, retention policy changes, purges, and reset actions. Uses cloud logs when available, otherwise local browser logs.</p>
         <p id="auditLogMeta" class="audit-log-meta">Log source: local browser</p>
+
+        <div id="userAdminSection" class="user-admin hidden">
+          <div class="row between">
+            <h3>User Accounts</h3>
+            <button id="userAdminRefresh" type="button" class="manual-secondary-btn">Refresh</button>
+          </div>
+          <p class="hint">Registered accounts stored in Cloudflare. Reset passwords, change roles, or remove users here. Accounts flagged for reset are highlighted.</p>
+          <p id="userAdminMeta" class="audit-log-meta"></p>
+          <div class="table-wrap">
+            <table id="userAdminTable">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
         <div id="auditLogSummary" class="audit-summary-grid"></div>
         <div class="table-wrap">
           <table id="auditLogTable">
@@ -186,8 +202,8 @@
       </section>
     </main>
 
-    <section id="nameGateOverlay" class="name-gate-overlay" role="dialog" aria-modal="true" aria-labelledby="nameGateTitle" aria-describedby="nameGateDescription">
-      <form id="nameGateForm" class="name-gate-card" autocomplete="on" novalidate>
+    <section id="nameGateOverlay" class="name-gate-overlay" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class="name-gate-card auth-card">
         <div class="name-gate-top">
           <svg class="name-gate-mark" viewBox="0 0 80 80" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
             <rect width="80" height="80" rx="16" fill="rgba(42,15,22,0.97)"/>
@@ -198,28 +214,78 @@
           </svg>
           <div>
             <span class="name-gate-kicker">Cicatrix</span>
-            <h2 id="nameGateTitle">Enter Your Name</h2>
+            <h2 id="authTitle">Sign In</h2>
           </div>
         </div>
-        <p id="nameGateDescription" class="name-gate-copy">Enter your name to continue. This is used only to identify your session and is never stored after you close the page.</p>
-        <label class="name-gate-field" for="nameGateInput">
-          <span>Name</span>
-          <input id="nameGateInput" name="name" type="text" maxlength="80" autocomplete="name" placeholder="First Last" required />
-        </label>
-        <div class="name-gate-acks" role="group" aria-label="Required acknowledgements">
-          <label class="name-gate-check" for="nameGateClinicalAck">
-            <input id="nameGateClinicalAck" type="checkbox" required />
-            <span>I understand that Cicatrix is a clinical support tool only. It does not diagnose, prescribe, replace clinical judgment, or replace healthcare workers. All outputs are treatment considerations only and must be reviewed by a qualified healthcare professional before use in patient care.</span>
+
+        <!-- Login -->
+        <form id="authLoginForm" class="auth-view" data-auth-view="login" autocomplete="on" novalidate>
+          <p class="name-gate-copy">Sign in to continue.</p>
+          <label class="name-gate-field" for="loginUsername">
+            <span>Username</span>
+            <input id="loginUsername" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
           </label>
-          <label class="name-gate-check" for="nameGateAgreeAck">
-            <input id="nameGateAgreeAck" type="checkbox" required />
-            <span>I have read and agree to the Terms and Agreements.</span>
+          <label class="name-gate-field" for="loginPassword">
+            <span>Password</span>
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
           </label>
-        </div>
-        <p class="name-gate-terms"><a id="nameGateTermsLink" href="#termsAndAgreements">Terms and Agreements</a></p>
-        <p id="nameGateError" class="name-gate-error" aria-live="polite"></p>
-        <button id="nameGateSubmit" type="submit">Continue</button>
-      </form>
+          <p id="loginError" class="name-gate-error" aria-live="polite"></p>
+          <button type="submit">Sign In</button>
+          <p class="auth-links">
+            <a href="#register" data-auth-nav="register">Register</a>
+            <span class="auth-sep" aria-hidden="true">·</span>
+            <a href="#forgot" data-auth-nav="forgot">Forgot password?</a>
+          </p>
+        </form>
+
+        <!-- Register -->
+        <form id="authRegisterForm" class="auth-view hidden" data-auth-view="register" autocomplete="on" novalidate>
+          <p class="name-gate-copy">Create an account. You only need to accept the terms once — we'll remember you on this device.</p>
+          <label class="name-gate-field" for="registerUsername">
+            <span>Username</span>
+            <input id="registerUsername" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" required />
+          </label>
+          <label class="name-gate-field" for="registerEmail">
+            <span>Email <span class="auth-optional">(optional, for future password resets)</span></span>
+            <input id="registerEmail" name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" />
+          </label>
+          <label class="name-gate-field" for="registerPassword">
+            <span>Password <span class="auth-optional">(8+ characters)</span></span>
+            <input id="registerPassword" name="new-password" type="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          <label class="name-gate-field" for="registerPasswordConfirm">
+            <span>Confirm Password</span>
+            <input id="registerPasswordConfirm" type="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          <div class="name-gate-acks" role="group" aria-label="Required acknowledgements">
+            <label class="name-gate-check" for="registerClinicalAck">
+              <input id="registerClinicalAck" type="checkbox" required />
+              <span>I understand that Cicatrix is a clinical support tool only. It does not diagnose, prescribe, replace clinical judgment, or replace healthcare workers. All outputs are treatment considerations only and must be reviewed by a qualified healthcare professional before use in patient care.</span>
+            </label>
+            <label class="name-gate-check" for="registerAgreeAck">
+              <input id="registerAgreeAck" type="checkbox" required />
+              <span>I have read and agree to the Terms and Agreements.</span>
+            </label>
+          </div>
+          <p class="name-gate-terms"><a id="nameGateTermsLink" href="#termsAndAgreements">Terms and Agreements</a></p>
+          <p id="registerError" class="name-gate-error" aria-live="polite"></p>
+          <button type="submit">Create Account</button>
+          <p class="auth-links"><a href="#login" data-auth-nav="login">← Back to sign in</a></p>
+        </form>
+
+        <!-- Forgot password -->
+        <form id="authForgotForm" class="auth-view hidden" data-auth-view="forgot" novalidate>
+          <p class="name-gate-copy">Enter your username to request a password reset. Your administrator will be notified and can reset it for you.</p>
+          <label class="name-gate-field" for="forgotUsername">
+            <span>Username</span>
+            <input id="forgotUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+          </label>
+          <p id="forgotError" class="name-gate-error" aria-live="polite"></p>
+          <p id="forgotSuccess" class="auth-success" aria-live="polite"></p>
+          <button type="submit">Request Reset</button>
+          <p class="auth-links"><a href="#login" data-auth-nav="login">← Back to sign in</a></p>
+        </form>
+      </div>
       <section id="termsDialog" class="terms-dialog" role="dialog" aria-modal="true" aria-labelledby="termsDialogTitle" hidden>
         <div class="terms-card">
           <h2 id="termsDialogTitle">Cicatrix Terms of Use &amp; Clinical Disclaimer</h2>
