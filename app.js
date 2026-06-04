@@ -5970,6 +5970,21 @@
     const suggestions = [];
     const add = (code, description, note = "") => suggestions.push({ code, description, note });
 
+    /* Adds E&M codes for all care settings; officeNote = pathway-specific caveat for the office code */
+    const addEMCodes = (officeNote = "") => {
+      const officeBase = officeNote ? `${officeNote}; ` : "";
+      add("99213", "E&M — Office/outpatient, established patient, low complexity",
+          `${officeBase}use 99214 (moderate) or 99215 (high MDM); 99202–99205 for new patients`);
+      add("99214", "E&M — Office/outpatient, established patient, moderate complexity",
+          "Prescription management, review of test results, or multiple data sources increases to moderate MDM");
+      add("99232", "E&M — Hospital inpatient/observation, subsequent care, moderate complexity",
+          "For inpatient wound rounds; use 99231 (low) or 99233 (high MDM); 99221–99223 for initial hospital admission");
+      add("99309", "E&M — SNF/nursing facility, subsequent care, moderate complexity",
+          "Use 99307–99308 for lower complexity or 99310 for high MDM; 99304–99306 for initial NF admission");
+      add("99347", "E&M — Home/residence visit, established patient, low complexity",
+          "Use 99348 (moderate) or 99350 (high MDM); 99341–99345 for new home patients");
+    };
+
     const area   = Number(row.area_cm2 || 0);
     const depth  = Number(row.depth_cm  || 0);
     const eschar = Number(row.eschar_pct || 0);
@@ -5986,7 +6001,9 @@
     if (c.necrotizingFasciitis) {
       add("11043", "Debridement, muscle and/or fascia; first 20 sq cm", "Emergency surgical debridement; use 11046 for each additional 20 sq cm");
       add("11044", "Debridement, bone; first 20 sq cm", "If bone involvement; use 11047 for each additional 20 sq cm");
-      add("99223", "Initial hospital care, high complexity", "Inpatient E&M for admission");
+      add("99223", "E&M — Hospital admission, initial care, high complexity", "Inpatient admission E&M; high MDM standard for NF");
+      add("99232", "E&M — Hospital inpatient, subsequent care, moderate complexity", "For daily wound rounds post-debridement; use 99233 for high complexity days");
+      add("99233", "E&M — Hospital inpatient, subsequent care, high complexity", "High MDM subsequent — major surgical decisions, deterioration, or sepsis management");
       return suggestions;
     }
 
@@ -5996,6 +6013,7 @@
       add("16025", "Dressing and/or debridement; medium (5–10% TBSA or whole extremity)");
       add("16030", "Dressing and/or debridement; large (> 10% TBSA or > 1 extremity)");
       add("16035", "Escharotomy", "Use if circumferential burn with compartment risk");
+      addEMCodes("major burns often billed inpatient; use hospital codes for admitted patients");
       return suggestions;
     }
 
@@ -6019,7 +6037,7 @@
       if (deepStructures || isStage4 || c.osteomyelitisSignal) {
         add("11043", "Debridement, muscle and/or fascia; first 20 sq cm", "For exposed muscle/tendon/fascia; use 11046 per additional 20 sq cm");
       }
-      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management follow-up; use 99214 for higher medical decision complexity");
+      addEMCodes();
       return suggestions;
     }
 
@@ -6027,7 +6045,7 @@
     if (c.fistulaWound) {
       add("97602", "Non-selective wound debridement, per session", "For periwound skin management");
       add("44640", "Closure of intestinal cutaneous fistula", "Surgical; add E&M for management visits");
-      add("99213", "Office/outpatient E&M visit, low-moderate complexity", "Wound management follow-up");
+      addEMCodes();
       return suggestions;
     }
 
@@ -6044,7 +6062,7 @@
         add("99183", "Physician or other QHP supervision of hyperbaric oxygen therapy, per session");
         add("G0277", "HBOT, pressure, full body; 30 minutes", "Facility code; 99183 is professional component");
       }
-      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit");
+      addEMCodes();
       return suggestions;
     }
 
@@ -6060,7 +6078,7 @@
         add("99183", "Physician or other QHP supervision of hyperbaric oxygen therapy, per session");
         add("G0277", "HBOT, pressure, full body; 30 minutes", "Facility code; 99183 is professional component");
       }
-      add("99213", "Office/outpatient E&M, low-moderate complexity");
+      addEMCodes();
       return suggestions;
     }
 
@@ -6069,14 +6087,14 @@
       add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Only after specialist approves debridement");
       add("97602", "Non-selective wound debridement, per session", "Autolytic/enzymatic — conservative approach preferred");
       add("11100", "Biopsy of skin, subcutaneous tissue; single lesion", "Punch biopsy of wound edge for histopathology and DIF");
-      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; primary billing should reflect rheumatology/dermatology management");
+      addEMCodes("primary billing should reflect rheumatology/dermatology management");
       return suggestions;
     }
 
     /* ── Martorell Ulcer (HILU) ────────────────────────── */
     if (c.martorell) {
       add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Only after BP control established and pain adequately managed");
-      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; hypertension management billed separately");
+      addEMCodes("hypertension management billed separately");
       if (depth >= 0.5) {
         add("99183", "Physician supervision of hyperbaric oxygen therapy, per session");
         add("G0277", "HBOT, full body; 30 minutes");
@@ -6099,7 +6117,7 @@
         add("11900", "Injection, intralesional; up to 7 lesions", "For intralesional triamcinolone");
       }
       add("97602", "Non-selective debridement, per session", "For draining sinus tracts wound care");
-      add("99213", "Office/outpatient E&M, low-moderate complexity");
+      addEMCodes();
       return suggestions;
     }
 
@@ -6110,7 +6128,7 @@
       const isFailed = stageVal.includes("failure") || stageVal.includes("failed");
       if (isDonor) {
         add("97597", "Active wound care management, selective debridement; first 20 sq cm", "Donor site wound management");
-        add("99213", "Office/outpatient E&M, low-moderate complexity", "Donor site follow-up visit");
+        addEMCodes("donor site follow-up");
       } else if (isFailed) {
         add("15100", "Split-thickness autograft, trunk/arms/legs; first 100 sq cm or 1% TBSA in children", "Re-grafting procedure");
         add("15101", "Split-thickness autograft; each additional 100 sq cm");
@@ -6120,7 +6138,7 @@
       } else {
         add("15002", "Surgical preparation/creation of recipient site; trunk/arms/legs first 100 sq cm", "Use for recipient site wound bed prep if needed");
         add("15100", "Split-thickness autograft, trunk/arms/legs; first 100 sq cm", "Initial grafting procedure");
-        add("99213", "Office/outpatient E&M, low-moderate complexity", "Post-graft follow-up");
+        addEMCodes("post-graft follow-up");
       }
       return suggestions;
     }
@@ -6150,7 +6168,7 @@
         }
         add("97602", "Non-selective debridement, per session", "Autolytic/moisture balance for clean or early-stage pressure injury");
       }
-      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; document pressure redistribution plan and support surface");
+      addEMCodes("document pressure redistribution plan and support surface in notes");
       return suggestions;
     }
 
@@ -6184,7 +6202,7 @@
         add("15272", "Application of skin substitute graft; each additional 25 sq cm");
         add("Q4100–Q4299", "Skin substitute product HCPCS Q-code", "Bill appropriate Q-code for the specific CTP product applied");
       }
-      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit");
+      addEMCodes();
       return suggestions;
     }
 
@@ -6196,7 +6214,7 @@
       } else {
         add("97602", "Non-selective debridement, per session", "Conservative/autolytic approach pending vascular assessment");
       }
-      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit; vascular surgery referral billed separately");
+      addEMCodes("vascular surgery referral billed separately");
       return suggestions;
     }
 
@@ -6218,7 +6236,7 @@
         add("15272", "Application of skin substitute graft; each additional 25 sq cm");
         add("Q4100–Q4299", "Skin substitute product HCPCS Q-code", "Bill appropriate Q-code for the specific CTP product applied");
       }
-      add("99213", "Office/outpatient E&M, low-moderate complexity", "Wound management visit");
+      addEMCodes();
       return suggestions;
     }
 
