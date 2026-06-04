@@ -262,6 +262,80 @@
     { value: "delayed_healing", label: "Delayed healing" },
   ];
   const OVERRIDE_EXUDATE_SEVERITY = { scant: 0, small: 1, moderate: 2, large: 3, copious: 4 };
+
+  /* ── Patient Clinical Profile options ─────────────────────────────────── */
+  const MANUAL_SEX_OPTIONS = [
+    { value: "", label: "Not set" },
+    { value: "female", label: "Female" },
+    { value: "male", label: "Male" },
+  ];
+  const MANUAL_SMOKING_OPTIONS = [
+    { value: "", label: "Not set" },
+    { value: "never", label: "Never" },
+    { value: "former", label: "Former" },
+    { value: "current", label: "Current" },
+  ];
+  /* Comorbidities pertinent to wound healing & treatment selection.
+     Diabetes is handled by the dedicated Diabetic Yes/No control. */
+  const COMORBIDITY_OPTIONS = [
+    { value: "pad", label: "Peripheral arterial disease" },
+    { value: "chronic_venous_insufficiency", label: "Chronic venous insufficiency" },
+    { value: "peripheral_neuropathy", label: "Peripheral neuropathy" },
+    { value: "ckd", label: "Chronic kidney disease" },
+    { value: "esrd_dialysis", label: "ESRD / on dialysis" },
+    { value: "chf", label: "Congestive heart failure" },
+    { value: "copd", label: "COPD" },
+    { value: "immunosuppression", label: "Immunosuppression" },
+    { value: "active_malignancy", label: "Active malignancy" },
+    { value: "autoimmune_ctd", label: "Autoimmune / connective tissue disease" },
+    { value: "rheumatoid_arthritis", label: "Rheumatoid arthritis" },
+    { value: "ibd", label: "Inflammatory bowel disease" },
+    { value: "anemia", label: "Anemia" },
+    { value: "malnutrition", label: "Malnutrition" },
+    { value: "obesity", label: "Obesity" },
+    { value: "hypothyroidism", label: "Hypothyroidism" },
+    { value: "coagulopathy", label: "Coagulopathy / on anticoagulation" },
+  ];
+  /* Medications that impair or modify wound healing */
+  const HEALING_MED_OPTIONS = [
+    { value: "corticosteroids", label: "Systemic corticosteroids" },
+    { value: "immunosuppressants", label: "Immunosuppressants" },
+    { value: "chemotherapy", label: "Chemotherapy" },
+    { value: "biologics", label: "Biologics (anti-TNF, etc.)" },
+    { value: "anticoagulants", label: "Anticoagulants (warfarin, DOAC)" },
+    { value: "chronic_nsaids", label: "Chronic NSAIDs" },
+  ];
+  /* Common wound-culture organisms */
+  const WOUND_CULTURE_OPTIONS = [
+    { value: "mrsa", label: "MRSA" },
+    { value: "mssa", label: "MSSA (Staph aureus)" },
+    { value: "pseudomonas", label: "Pseudomonas aeruginosa" },
+    { value: "streptococcus", label: "Streptococcus" },
+    { value: "enterococcus", label: "Enterococcus (incl. VRE)" },
+    { value: "e_coli", label: "E. coli / coliforms" },
+    { value: "anaerobes", label: "Anaerobes" },
+    { value: "fungal", label: "Fungal / Candida" },
+    { value: "polymicrobial", label: "Polymicrobial" },
+  ];
+  /* Numeric patient/lab fields: [key, min, max] for sanitization */
+  const PATIENT_NUMERIC_FIELDS = {
+    age:          [0, 120],
+    weight_lb:    [0, 1500],
+    height_in:    [0, 100],
+    albumin:      [0, 10],
+    prealbumin:   [0, 100],
+    hba1c:        [0, 25],
+    hemoglobin:   [0, 25],
+    wbc:          [0, 300],
+    crp:          [0, 1000],
+    esr:          [0, 200],
+    creatinine:   [0, 30],
+    egfr:         [0, 200],
+    vitamin_d:    [0, 200],
+    tcpo2:        [0, 200],
+    toe_pressure: [0, 300],
+  };
+
   const OVERRIDE_VALUE_LABELS = new Map(
     []
       .concat(OVERRIDE_THICKNESS_OPTIONS)
@@ -270,6 +344,9 @@
       .concat(OVERRIDE_ODOR_OPTIONS)
       .concat(OVERRIDE_EXPOSED_STRUCTURE_OPTIONS)
       .concat(OVERRIDE_INFECTION_SIGN_OPTIONS)
+      .concat(COMORBIDITY_OPTIONS)
+      .concat(HEALING_MED_OPTIONS)
+      .concat(WOUND_CULTURE_OPTIONS)
       .map((opt) => [opt.value, opt.label]),
   );
 
@@ -542,11 +619,118 @@
       odor: toAllowedValue(input.odor, OVERRIDE_ODOR_OPTIONS),
       exposed_structures: normalizeOverrideList(input.exposed_structures, OVERRIDE_EXPOSED_STRUCTURE_OPTIONS),
       infection_signs: normalizeOverrideList(input.infection_signs, OVERRIDE_INFECTION_SIGN_OPTIONS),
+      patient: normalizePatientProfile(input.patient),
+    };
+  }
+
+  /** Sanitize the patient clinical profile sub-object (demographics, labs,
+      comorbidities, cultures, medications). Returns a fully-shaped object with
+      null for absent numerics so downstream checks are simple. */
+  function normalizePatientProfile(raw) {
+    const input = raw && typeof raw === "object" ? raw : {};
+    const toAllowed = (value, options) => {
+      const v = normalizeOverrideValue(value);
+      return options.some((o) => o.value === v) ? v : "";
+    };
+    const num = (value, min, max) => {
+      if (value === "" || value == null) return null;
+      const n = Number(value);
+      if (!Number.isFinite(n)) return null;
+      return Math.min(max, Math.max(min, n));
+    };
+    const out = {
+      sex: toAllowed(input.sex, MANUAL_SEX_OPTIONS),
+      smoking: toAllowed(input.smoking, MANUAL_SMOKING_OPTIONS),
+      comorbidities: normalizeOverrideList(input.comorbidities, COMORBIDITY_OPTIONS),
+      healing_meds: normalizeOverrideList(input.healing_meds, HEALING_MED_OPTIONS),
+      cultures: normalizeOverrideList(input.cultures, WOUND_CULTURE_OPTIONS),
+      culture_notes: String(input.culture_notes || "").trim().slice(0, 240),
+    };
+    for (const [key, [min, max]] of Object.entries(PATIENT_NUMERIC_FIELDS)) {
+      out[key] = num(input[key], min, max);
+    }
+    return out;
+  }
+
+  /** Derive wound-healing risk flags and optimization guidance from a
+      normalized patient profile. Pure function — no DOM. */
+  function derivePatientFactors(patient) {
+    const p = patient || {};
+    const has = (list, v) => Array.isArray(list) && list.includes(v);
+    const comorbid = (v) => has(p.comorbidities, v);
+    const onMed = (v) => has(p.healing_meds, v);
+
+    const bmi = (p.weight_lb && p.height_in)
+      ? Math.round((703 * p.weight_lb / (p.height_in * p.height_in)) * 10) / 10
+      : null;
+
+    const lowAlbumin = p.albumin != null && p.albumin < 3.5;
+    const severeHypoalbuminemia = p.albumin != null && p.albumin < 3.0;
+    const lowPrealbumin = p.prealbumin != null && p.prealbumin < 15;
+    const malnutritionRisk = lowAlbumin || lowPrealbumin || comorbid("malnutrition") ||
+      (bmi != null && bmi < 18.5);
+    const suboptimalGlycemic = p.hba1c != null && p.hba1c > 7;
+    const poorGlycemic = p.hba1c != null && p.hba1c > 8;
+    const anemia = p.hemoglobin != null && p.hemoglobin < 11;
+    const currentSmoker = p.smoking === "current";
+    const formerSmoker = p.smoking === "former";
+    const immunosuppressed = comorbid("immunosuppression") || comorbid("active_malignancy") ||
+      onMed("corticosteroids") || onMed("immunosuppressants") || onMed("chemotherapy") || onMed("biologics");
+    const ckd = comorbid("ckd") || comorbid("esrd_dialysis");
+    const esrd = comorbid("esrd_dialysis");
+    const onAnticoagulation = comorbid("coagulopathy") || onMed("anticoagulants");
+    const obesity = comorbid("obesity") || (bmi != null && bmi >= 30);
+    const neuropathy = comorbid("peripheral_neuropathy");
+    const elevatedEsr = p.esr != null && p.esr >= 70;     /* supports osteomyelitis */
+    const elevatedCrp = p.crp != null && p.crp >= 100;
+    const leukocytosis = p.wbc != null && p.wbc >= 12;
+    const lowVitD = p.vitamin_d != null && p.vitamin_d < 20;
+    const lowPerfusionTcpo2 = p.tcpo2 != null && p.tcpo2 < 40;
+
+    /* Build human-readable optimization guidance for the considerations */
+    const optimization = [];
+    if (malnutritionRisk) {
+      const detail = [];
+      if (p.albumin != null) detail.push(`albumin ${p.albumin} g/dL`);
+      if (p.prealbumin != null) detail.push(`prealbumin ${p.prealbumin} mg/dL`);
+      if (bmi != null && bmi < 18.5) detail.push(`BMI ${bmi}`);
+      optimization.push(
+        `Nutritional optimization — protein 1.25–1.5 g/kg/day, ensure adequate calories, consider arginine + vitamin C + zinc; dietitian referral${detail.length ? " (" + detail.join(", ") + ")" : ""}`
+      );
+    }
+    if (lowVitD) optimization.push(`Vitamin D repletion — level ${p.vitamin_d} ng/mL is low (supports immune function & healing)`);
+    if (suboptimalGlycemic) {
+      optimization.push(
+        `Glycemic optimization — HbA1c ${p.hba1c}% ${poorGlycemic ? "well above" : "above"} target; coordinate with PCP/endocrinology (hyperglycemia impairs leukocyte function & collagen synthesis)`
+      );
+    }
+    if (anemia) optimization.push(`Address anemia — hemoglobin ${p.hemoglobin} g/dL limits tissue oxygen delivery; evaluate cause`);
+    if (currentSmoker) optimization.push("Smoking cessation counseling — tobacco causes vasoconstriction and impairs oxygen delivery & healing");
+    if (immunosuppressed) optimization.push("Heightened infection surveillance — immunosuppression blunts inflammatory signs and delays healing; low threshold for culture/antibiotics");
+    if (obesity && bmi != null) optimization.push(`Obesity (BMI ${bmi}) — optimize pressure redistribution and moisture management at skin folds`);
+    if (neuropathy) optimization.push("Protective sensation absent — reinforce off-loading and daily foot inspection");
+    if (ckd) optimization.push(`Renal impairment present${esrd ? " (ESRD/dialysis)" : ""} — adjust renally-cleared antibiotics; watch fluid balance affecting edema`);
+    if (esrd && onAnticoagulation) optimization.push("ESRD + anticoagulation — heightened calciphylaxis risk; reassess warfarin if retiform purpura or disproportionate pain develops");
+    if (lowPerfusionTcpo2) optimization.push(`Low tissue oxygenation — TcPO₂ ${p.tcpo2} mmHg suggests impaired perfusion; vascular evaluation before aggressive debridement`);
+
+    return {
+      bmi, lowAlbumin, severeHypoalbuminemia, lowPrealbumin, malnutritionRisk,
+      suboptimalGlycemic, poorGlycemic, anemia, currentSmoker, formerSmoker,
+      immunosuppressed, ckd, esrd, onAnticoagulation, obesity, neuropathy,
+      elevatedEsr, elevatedCrp, leukocytosis, lowVitD, lowPerfusionTcpo2,
+      optimization,
     };
   }
 
   function hasAnyManualOverride(manual) {
     const normalized = normalizeManualOverrides(manual);
+    const p = normalized.patient || {};
+    const patientHasData =
+      p.sex || p.smoking || p.culture_notes ||
+      (p.comorbidities && p.comorbidities.length) ||
+      (p.healing_meds && p.healing_meds.length) ||
+      (p.cultures && p.cultures.length) ||
+      Object.keys(PATIENT_NUMERIC_FIELDS).some((k) => p[k] != null);
     return Boolean(
       normalized.diabetic ||
       normalized.thickness ||
@@ -554,7 +738,8 @@
       normalized.exudate_type ||
       normalized.odor ||
       normalized.exposed_structures.length ||
-      normalized.infection_signs.length
+      normalized.infection_signs.length ||
+      patientHasData
     );
   }
 
@@ -3106,6 +3291,7 @@
 
   function buildContext(latest, previous, manualOverrides = null) {
     const manual = normalizeManualOverrides(manualOverrides);
+    const patientFactors = derivePatientFactors(manual.patient);
     const statusText = normalizeText(latest.status);
     const stageText = normalizeText(latest.stage);
     const woundTypeText = normalizeText(latest.wound_type);
@@ -3173,12 +3359,15 @@
       ["pressure injury", "unstageable", "deep tissue", "dtpi", "dti"].some((t) => stageText.includes(t)) ||
       woundTypeText.includes("pressure")
     );
-    const venousRelated = woundTypeText.includes("venous") || woundTypeText.includes("stasis");
+    const patientComorbidities = (manual.patient && manual.patient.comorbidities) || [];
+    const venousRelated = woundTypeText.includes("venous") || woundTypeText.includes("stasis") ||
+      patientComorbidities.includes("chronic_venous_insufficiency");
     const arterialRelated = (
       woundTypeText.includes("arterial") ||
       woundTypeText.includes("ischemic") ||
       woundTypeText.includes("ischaemic") ||
-      woundTypeText.includes("pad")
+      woundTypeText.includes("pad") ||
+      patientComorbidities.includes("pad")
     );
 
     const pyodermaGangrenosum = (
@@ -3447,6 +3636,9 @@
       effectiveOdor,
       effectiveInfectionSigns,
       effectiveExposedStructures,
+      patientProfile: manual.patient,
+      patientFactors,
+      patientOptimization: patientFactors.optimization,
     };
   }
 
@@ -5207,6 +5399,7 @@
     pushStep("Change Frequency", effectiveFrequency);
     pushStep("Compression", effectiveCompression);
     pushStep("Pressure Relief", effectivePressureRelief);
+    pushStep("Patient Optimization", context.patientOptimization);
 
     if (!orderedSteps.length) {
       return {
@@ -6053,6 +6246,34 @@
       sentences.push(`Local infection signs include ${joinNarrativeList(infectionLabels)}.`);
     }
 
+    /* Patient clinical profile summary */
+    const p = manual.patient || {};
+    const demo = [];
+    if (p.age != null) demo.push(`${p.age}-year-old`);
+    if (p.sex) demo.push(p.sex);
+    if (demo.length) sentences.push(`Patient is a ${demo.join(" ")}.`);
+
+    const comorbidLabels = labelsForOverrideValues(p.comorbidities).map((v) => toLowerPhrase(v));
+    if (comorbidLabels.length) sentences.push(`Relevant comorbidities: ${joinNarrativeList(comorbidLabels)}.`);
+
+    const labBits = [];
+    if (p.albumin != null) labBits.push(`albumin ${p.albumin} g/dL`);
+    if (p.hba1c != null) labBits.push(`HbA1c ${p.hba1c}%`);
+    if (p.hemoglobin != null) labBits.push(`hemoglobin ${p.hemoglobin} g/dL`);
+    if (p.egfr != null) labBits.push(`eGFR ${p.egfr} mL/min`);
+    if (labBits.length) sentences.push(`Pertinent labs: ${labBits.join(", ")}.`);
+
+    if (p.smoking === "current") sentences.push("The patient is a current smoker.");
+
+    const cultureLabels = labelsForOverrideValues(p.cultures).map((v) => toLowerPhrase(v));
+    if (cultureLabels.length) {
+      const note = p.culture_notes ? ` (${p.culture_notes})` : "";
+      sentences.push(`Wound culture: ${joinNarrativeList(cultureLabels)}${note}.`);
+    }
+
+    const medLabels = labelsForOverrideValues(p.healing_meds).map((v) => toLowerPhrase(v));
+    if (medLabels.length) sentences.push(`Medications affecting healing: ${joinNarrativeList(medLabels)}.`);
+
     const detailText = sentences.join(" ").replace(/\s+/g, " ").trim();
     if (!detailText) return "";
 
@@ -6192,8 +6413,28 @@
 
     const locHas = (...terms) => terms.some((t) => loc.includes(t));
 
-    /* Shared infection pathogen helper — call after primary wound codes */
+    /* Shared infection pathogen helper — call after primary wound codes.
+       Prefers documented culture organisms; falls back to generic MRSA hint. */
     const addPathogen = () => {
+      const cultures = (c.patientProfile && c.patientProfile.cultures) || [];
+      const PATHOGEN_CODES = {
+        mrsa:          ["B95.62", "MRSA as the cause of disease classified elsewhere"],
+        mssa:          ["B95.61", "MSSA (Staphylococcus aureus) as the cause of disease classified elsewhere"],
+        streptococcus: ["B95.5",  "Unspecified streptococcus as the cause of disease classified elsewhere"],
+        enterococcus:  ["B95.2",  "Enterococcus as the cause of disease classified elsewhere"],
+        pseudomonas:   ["B96.5",  "Pseudomonas as the cause of disease classified elsewhere"],
+        e_coli:        ["B96.20", "Unspecified E. coli as the cause of disease classified elsewhere"],
+        anaerobes:     ["B96.89", "Other specified bacterial agents as the cause of disease classified elsewhere"],
+        fungal:        ["B49",    "Unspecified mycosis (fungal infection) — specify organism if known"],
+        polymicrobial: ["B96.89", "Other specified bacterial agents (polymicrobial) as the cause of disease classified elsewhere"],
+      };
+      if (cultures.length) {
+        cultures.forEach((org) => {
+          const entry = PATHOGEN_CODES[org];
+          if (entry) add(entry[0], entry[1], "Documented on wound culture");
+        });
+        return;
+      }
       if (c.potentialBioburden || c.effectiveInfectionSigns?.length) {
         add("B95.62", "MRSA as causative organism", "Add when MRSA confirmed on culture; use B95.8 for other Staph, B96.89 for other bacteria");
       }
@@ -8584,6 +8825,12 @@
     return manualInput(field, "number", "%", 'step="1" min="0" max="100" inputmode="decimal"');
   }
 
+  /* Patient-profile numeric input (data-field is prefixed "patient_") */
+  function manualPatientNumber(field, unit = "", value = null, step = "0.1") {
+    const v = (value != null && value !== "") ? ` value="${escapeHtml(String(value))}"` : "";
+    return `<input data-field="patient_${escapeHtml(field)}" type="number" placeholder="${escapeHtml(unit)}" step="${escapeHtml(step)}" min="0" inputmode="decimal"${v} />`;
+  }
+
   function updateTissuePctAlert(card) {
     const alert = card.querySelector("[data-tissue-alert]");
     if (!alert) return;
@@ -8615,6 +8862,7 @@
 
   function buildManualWoundCardHtml(cardNumber, seed = {}) {
     const selected = normalizeManualOverrides(seed.manual_overrides || {});
+    const patient = selected.patient;
     return `
       <div class="manual-wound-head">
         <h3 class="manual-wound-title">Wound ${escapeHtml(String(cardNumber))}</h3>
@@ -8689,10 +8937,6 @@
         <summary>Clinical Details <span class="manual-details-hint">(wound characteristics, infection flags)</span></summary>
         <div class="manual-grid manual-prior">
           <label class="manual-field">
-            <span>Diabetic</span>
-            ${manualSelect([{ value: "", label: "Not set" }, { value: "yes", label: "Yes" }, { value: "no", label: "No" }], "diabetic", selected.diabetic)}
-          </label>
-          <label class="manual-field">
             <span>Thickness of Wound</span>
             ${manualSelect(OVERRIDE_THICKNESS_OPTIONS, "thickness", selected.thickness)}
           </label>
@@ -8735,6 +8979,112 @@
             ${buildManualChecklist("infection_signs", OVERRIDE_INFECTION_SIGN_OPTIONS, selected.infection_signs)}
           </div>
         </div>
+      </details>
+      <details class="manual-prior manual-patient-profile">
+        <summary>Patient Clinical Profile <span class="manual-details-hint">(demographics, labs, comorbidities — informs treatment &amp; optimization)</span></summary>
+
+        <h4 class="manual-subhead">Demographics &amp; Vitals</h4>
+        <div class="manual-grid manual-prior">
+          <label class="manual-field">
+            <span>Diabetic</span>
+            ${manualSelect([{ value: "", label: "Not set" }, { value: "yes", label: "Yes" }, { value: "no", label: "No" }], "diabetic", selected.diabetic)}
+          </label>
+          <label class="manual-field">
+            <span>Age (years)</span>
+            ${manualPatientNumber("age", "years", patient.age, "1")}
+          </label>
+          <label class="manual-field">
+            <span>Sex</span>
+            ${manualSelect(MANUAL_SEX_OPTIONS, "patient_sex", patient.sex)}
+          </label>
+          <label class="manual-field">
+            <span>Weight (lb)</span>
+            ${manualPatientNumber("weight_lb", "lb", patient.weight_lb)}
+          </label>
+          <label class="manual-field">
+            <span>Height (in)</span>
+            ${manualPatientNumber("height_in", "in", patient.height_in)}
+          </label>
+          <label class="manual-field">
+            <span>Smoking Status</span>
+            ${manualSelect(MANUAL_SMOKING_OPTIONS, "patient_smoking", patient.smoking)}
+          </label>
+        </div>
+
+        <h4 class="manual-subhead">Labs</h4>
+        <div class="manual-grid manual-prior">
+          <label class="manual-field">
+            <span>Albumin (g/dL)</span>
+            ${manualPatientNumber("albumin", "g/dL", patient.albumin)}
+          </label>
+          <label class="manual-field">
+            <span>Prealbumin (mg/dL)</span>
+            ${manualPatientNumber("prealbumin", "mg/dL", patient.prealbumin)}
+          </label>
+          <label class="manual-field">
+            <span>HbA1c (%)</span>
+            ${manualPatientNumber("hba1c", "%", patient.hba1c)}
+          </label>
+          <label class="manual-field">
+            <span>Hemoglobin (g/dL)</span>
+            ${manualPatientNumber("hemoglobin", "g/dL", patient.hemoglobin)}
+          </label>
+          <label class="manual-field">
+            <span>WBC (K/µL)</span>
+            ${manualPatientNumber("wbc", "K/µL", patient.wbc)}
+          </label>
+          <label class="manual-field">
+            <span>CRP (mg/L)</span>
+            ${manualPatientNumber("crp", "mg/L", patient.crp)}
+          </label>
+          <label class="manual-field">
+            <span>ESR (mm/hr)</span>
+            ${manualPatientNumber("esr", "mm/hr", patient.esr, "1")}
+          </label>
+          <label class="manual-field">
+            <span>Creatinine (mg/dL)</span>
+            ${manualPatientNumber("creatinine", "mg/dL", patient.creatinine)}
+          </label>
+          <label class="manual-field">
+            <span>eGFR (mL/min)</span>
+            ${manualPatientNumber("egfr", "mL/min", patient.egfr, "1")}
+          </label>
+          <label class="manual-field">
+            <span>Vitamin D (ng/mL)</span>
+            ${manualPatientNumber("vitamin_d", "ng/mL", patient.vitamin_d, "1")}
+          </label>
+        </div>
+
+        <h4 class="manual-subhead">Perfusion</h4>
+        <div class="manual-grid manual-prior">
+          <label class="manual-field">
+            <span>TcPO₂ (mmHg)</span>
+            ${manualPatientNumber("tcpo2", "mmHg", patient.tcpo2, "1")}
+          </label>
+          <label class="manual-field">
+            <span>Toe Pressure (mmHg)</span>
+            ${manualPatientNumber("toe_pressure", "mmHg", patient.toe_pressure, "1")}
+          </label>
+        </div>
+
+        <div class="manual-grid manual-prior">
+          <div class="manual-check-section">
+            <h4>Comorbidities</h4>
+            ${buildManualChecklist("comorbidities", COMORBIDITY_OPTIONS, patient.comorbidities)}
+          </div>
+          <div class="manual-check-section">
+            <h4>Medications Affecting Healing</h4>
+            ${buildManualChecklist("healing_meds", HEALING_MED_OPTIONS, patient.healing_meds)}
+          </div>
+          <div class="manual-check-section">
+            <h4>Wound Culture Organisms</h4>
+            ${buildManualChecklist("cultures", WOUND_CULTURE_OPTIONS, patient.cultures)}
+          </div>
+        </div>
+        <label class="manual-field manual-field-wide">
+          <span>Culture / Sensitivity Notes</span>
+          ${manualInput("culture_notes", "text", "e.g. MRSA sensitive to vancomycin, resistant to clindamycin", `value="${escapeHtml(patient.culture_notes || "")}"`)}
+        </label>
       </details>
       <details class="manual-prior">
         <summary>Optional prior measurement for this wound</summary>
@@ -8891,7 +9241,23 @@
       odor: readManualField(card, "odor"),
       exposed_structures: readManualChecklist(card, "exposed_structures"),
       infection_signs: readManualChecklist(card, "infection_signs"),
+      patient: readPatientProfileFromCard(card),
     });
+  }
+
+  function readPatientProfileFromCard(card) {
+    const out = {
+      sex: readManualField(card, "patient_sex"),
+      smoking: readManualField(card, "patient_smoking"),
+      comorbidities: readManualChecklist(card, "comorbidities"),
+      healing_meds: readManualChecklist(card, "healing_meds"),
+      cultures: readManualChecklist(card, "cultures"),
+      culture_notes: readManualField(card, "culture_notes"),
+    };
+    for (const key of Object.keys(PATIENT_NUMERIC_FIELDS)) {
+      out[key] = readManualField(card, `patient_${key}`);
+    }
+    return out;
   }
 
   function buildManualRecord(card, meta, manualOverrides, prefix = "") {

@@ -605,6 +605,23 @@ th {
   background: #fdfbf9;
 }
 
+/* Patient Clinical Profile sub-section headings */
+.manual-subhead {
+  margin: 12px 0 6px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 3px;
+}
+.manual-subhead:first-of-type { margin-top: 4px; }
+
+.manual-field.manual-field-wide {
+  grid-column: 1 / -1;
+}
+
 .manual-check-section h4 {
   margin: 0 0 7px;
   font-size: 0.82rem;
