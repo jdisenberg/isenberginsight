@@ -479,7 +479,6 @@
     sourceMapBody: document.querySelector("#sourceMapTable tbody"),
     printPacketPanel: document.getElementById("printPacketPanel"),
     printPacketContent: document.getElementById("printPacketContent"),
-    copyAllNotesBtn: document.getElementById("copyAllNotesBtn"),
   };
 
   let latestOutputs = null;
