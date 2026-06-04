@@ -421,6 +421,7 @@
     narrativePanel: document.getElementById("narrativePanel"),
     narrativeText: document.getElementById("narrativeText"),
     narrativeStyle: document.getElementById("narrativeStyle"),
+    copyAllNotesBtn: document.getElementById("copyAllNotesBtn"),
     cmsGuidePanel: document.getElementById("cmsGuidePanel"),
     cmsGuideText: document.getElementById("cmsGuideText"),
     nameGateOverlay: document.getElementById("nameGateOverlay"),
@@ -478,6 +479,7 @@
     sourceMapBody: document.querySelector("#sourceMapTable tbody"),
     printPacketPanel: document.getElementById("printPacketPanel"),
     printPacketContent: document.getElementById("printPacketContent"),
+    copyAllNotesBtn: document.getElementById("copyAllNotesBtn"),
   };
 
   let latestOutputs = null;
@@ -8185,6 +8187,290 @@
       </details>`;
   }
 
+  /* ── Referral Triggers ────────────────────────────────────────────────── */
+  function buildReferralTriggers(row) {
+    const c = buildContext(row, null, row.manual_overrides || null);
+    if (c.isResolved || c.looksClosed) return [];
+    const triggers = [];
+    const add = (specialty, reason, urgency, detail) => triggers.push({ specialty, reason, urgency, detail });
+
+    /* Vascular Surgery */
+    if (c.arterialRelated && !c.abiDocumented) {
+      add("Vascular Surgery", "Arterial/ischemic wound without documented perfusion study — ABI or toe-brachial index needed before treatment escalation.", "urgent", "If ABI may be falsely elevated (calcification, diabetes), obtain toe pressures or Doppler waveforms.");
+    }
+    if (c.abiInadequateForCompression) {
+      add("Vascular Surgery", `ABI ${c.abiRange} — perfusion inadequate for standard compression. Revascularization evaluation may restore healing potential.`, "urgent", "Compression is contraindicated until vascular assessment is complete. Early revascularization improves limb salvage.");
+    } else if (c.abiMildImpairment && (c.venousRelated || c.diabeticFootRelated) && c.stalled) {
+      add("Vascular Surgery", "Mildly impaired ABI with stalled healing — consider non-invasive vascular study if not recently completed.", "routine", "Endovascular intervention may be appropriate even at mild ABI impairment if wound is non-healing.");
+    }
+    if (c.arterialRelated && c.eschar > 40 && !c.abiInadequateForCompression) {
+      add("Vascular Surgery", "Significant necrotic burden on an arterial/ischemic wound — revascularization assessment recommended before debridement.", "urgent", "Debridement without adequate perfusion creates non-healing defects. Assess revascularization potential first.");
+    }
+
+    /* Podiatry / Orthopedics */
+    if (c.diabeticFootRelated) {
+      const exposedSet = new Set(c.effectiveExposedStructures || []);
+      const deepExposed = ["bone", "tendon", "capsule", "joint"].some((s) => exposedSet.has(s));
+      if (deepExposed || c.osteomyelitisSignal) {
+        add("Podiatry / Orthopedic Surgery", "Diabetic foot ulcer with exposed deep structure or suspected osteomyelitis — surgical evaluation needed.", "urgent", "Probe-to-bone test positive or bone visible; imaging and surgical debridement assessment required. Risk of amputation is significantly elevated without specialist management.");
+      } else if (c.diabeticSuboptimal4WeekProgress) {
+        add("Podiatry / Wound Specialist", `Diabetic foot ulcer with < 50% area reduction over ~${c.previousIntervalDays} days — reassess off-loading, footwear, and perfusion.`, "routine", "The 4-week 50% area reduction benchmark (Sheehan et al.) is a validated predictor of healing failure; failure warrants pathway escalation.");
+      } else if (c.woundAgeDays != null && c.woundAgeDays >= 90) {
+        add("Podiatry / Wound Specialist", `Diabetic foot ulcer present for approximately ${Math.round(c.woundAgeDays)} days without resolution — consider specialist wound care program.`, "routine", "Chronic DFU > 12 weeks has reduced standard-of-care healing rates; advanced therapies and multidisciplinary input improve outcomes.");
+      }
+    }
+    if (c.osteomyelitisWound) {
+      add("Orthopedic Surgery / Infectious Disease", "Suspected or confirmed osteomyelitis — bone biopsy, culture, and surgical assessment required.", "urgent", "Surface swabs do not reliably identify osteomyelitis pathogens. Deep tissue/bone culture required for antibiotic guidance. Surgical debridement of infected bone is often necessary.");
+    }
+
+    /* Wound Specialist / Plastic Surgery */
+    if (c.pressureRelated) {
+      const st = normalizeText(row.stage || "");
+      const isStage34 = st.includes("stage 3") || st.includes("stage 4") || st.includes("stage iii") || st.includes("stage iv") || st.includes("unstageable");
+      if (isStage34 && c.stalled) {
+        add("Wound Specialist / Plastic Surgery", "Stage 3/4 or unstageable pressure injury with stalled healing — consider multidisciplinary wound program or surgical consultation.", "routine", "Advanced PI with stalled progress benefits from specialist evaluation including nutritional optimization, support surface reassessment, and surgical reconstruction options.");
+      }
+      if (isStage34 && (c.hasTunneling || c.hasUndermining)) {
+        add("Wound Specialist", "Stage 3/4 PI with tunneling/undermining — advanced wound management consultation recommended to assess for NPWT, surgical debridement, or flap candidacy.", "routine", "Tunneling in stage 3/4 PI indicates significant dead space and risk of abscess; specialist evaluation guides debridement and closure planning.");
+      }
+    }
+    if (c.surgicalWound && c.worsening && c.cavityLikely) {
+      add("Surgeon (Wound Closure)", "Worsening surgical dehiscence with significant cavity — refer back to operating surgeon or wound specialist for closure planning.", "routine", "Significant dehiscence may require revision, delayed primary closure, or NPWT as a bridge to closure.");
+    }
+    if (!c.pressureRelated && !c.diabeticFootRelated && c.chronic && c.stalled && c.woundAgeDays >= 90) {
+      add("Wound Specialist", `Non-healing wound present for approximately ${Math.round(c.woundAgeDays)} days — consider specialty wound care program for advanced therapies.`, "routine", "Chronic wounds failing standard care benefit from wound center interventions (cellular/tissue products, NPWT, biological debridement).");
+    }
+
+    /* Hyperbaric Oxygen */
+    if (c.diabeticFootRelated && c.woundAgeDays != null && c.woundAgeDays >= 30 && c.stalled) {
+      add("Hyperbaric Oxygen Therapy (HBOT)", "Refractory diabetic foot ulcer — HBOT evaluation for Wagner grade ≥ 3 or DFU not responding after 30 days of standard care.", "routine", "Medicare covers HBOT for DFU Wagner ≥ 3 not responding after 30 days. Requires baseline TcPO₂ in most programs.");
+    }
+    if (c.radiationWound) {
+      add("Hyperbaric Oxygen Therapy (HBOT)", "Radiation wound / osteoradionecrosis — HBOT evaluation (strong evidence for radiation tissue injury).", "routine", "HBOT enhances angiogenesis in hypoxic radiation-damaged tissue. UHMS guidelines support use for radiation tissue injury.");
+    }
+    if (c.osteomyelitisSignal && !c.osteomyelitisWound) {
+      add("Hyperbaric Oxygen Therapy (HBOT)", "Osteomyelitis signal — adjunctive HBOT consideration alongside surgical and antibiotic management.", "routine", "HBOT enhances leukocyte oxidative killing in hypoxic tissue. Considered adjunctive to, not a replacement for, surgical debridement.");
+    }
+
+    /* Dermatology / Rheumatology */
+    if (c.pyodermaGangrenosum) {
+      add("Dermatology / Rheumatology", "Suspected pyoderma gangrenosum — URGENT specialist referral. Do NOT debride.", "urgent", "PG requires immunosuppressive therapy. Debridement causes pathergy (paradoxical wound enlargement). Dermatology/rheumatology must direct all wound management.");
+    }
+    if (c.calciphylaxisWound) {
+      add("Nephrology / Wound Specialist", "Calciphylaxis — urgent nephrology referral for sodium thiosulfate and metabolic management.", "urgent", "Calciphylaxis has high mortality without specialist-directed metabolic management. Calcium-containing binders and warfarin should be reviewed urgently.");
+    }
+    if (c.vasculiticUlcer) {
+      add("Rheumatology / Dermatology", "Vasculitic ulcer — rheumatology evaluation to identify and treat underlying systemic vasculitis.", "urgent", "Vasculitic ulcers do not heal without immunosuppressive management of the underlying disease. Biopsies guide treatment selection.");
+    }
+
+    /* Nutrition / Dietitian */
+    const p = c.patientProfile || {};
+    const bradenNutrition = p.braden_nutrition != null ? Number(p.braden_nutrition) : null;
+    if (bradenNutrition != null && bradenNutrition <= 2) {
+      add("Registered Dietitian", `Braden nutrition subscale ${bradenNutrition}/4 — nutrition assessment and intervention needed to support wound healing.`, "routine", "Nutritional deficiency impairs all phases of wound healing. RD involvement improves healing outcomes, particularly for pressure injuries.");
+    } else if (c.pressureRelated && c.chronic) {
+      add("Registered Dietitian", "Chronic pressure injury — formal nutrition assessment recommended (protein, calorie, micronutrient status).", "routine", "Protein-calorie malnutrition is prevalent in PI patients. Targeted supplementation (arginine, vitamin C, zinc) has RCT evidence for Stage 3/4 PI.");
+    }
+
+    return triggers;
+  }
+
+  function renderReferralTriggersHtml(triggers) {
+    if (!triggers || !triggers.length) return "";
+    const urgent = triggers.filter((t) => t.urgency === "urgent");
+    const routine = triggers.filter((t) => t.urgency === "routine");
+    const renderTrigger = (t) => `
+      <div class="ref-trigger ref-trigger-${t.urgency}">
+        <div class="ref-trigger-head">
+          <span class="ref-specialty">${escapeHtml(t.specialty)}</span>
+          <span class="ref-urgency-badge ref-${t.urgency}">${t.urgency === "urgent" ? "Urgent" : "Routine"}</span>
+        </div>
+        <p class="ref-reason">${escapeHtml(t.reason)}</p>
+        <p class="ref-detail">${escapeHtml(t.detail)}</p>
+      </div>`;
+    const content = [...urgent.map(renderTrigger), ...routine.map(renderTrigger)].join("");
+    return `
+      <details class="ref-section"${urgent.length ? " open" : ""}>
+        <summary class="ref-toggle">
+          <span class="ref-label">Referral Considerations</span>
+          <span class="ref-meta">${urgent.length ? `${urgent.length} urgent · ` : ""}${triggers.length} total</span>
+        </summary>
+        <div class="ref-body">
+          ${content}
+          <p class="ref-disclaimer">Referral recommendations are clinical decision support — confirm with full patient assessment and local protocols.</p>
+        </div>
+      </details>`;
+  }
+
+  /* ── Dressing Recommendation Engine ───────────────────────────────────── */
+  function buildDressingRecommendation(row) {
+    const c = buildContext(row, null, row.manual_overrides || null);
+    if (c.isResolved || c.looksClosed) return null;
+    if (c.pyodermaGangrenosum || c.calciphylaxisWound || c.malignantWound || c.necrotizingFasciitis) return null;
+
+    const woundLabel = [row.wound_type, row.location].filter(Boolean).join(" — ");
+    const layers = [];
+    const mustDoc = [];
+    const add = (role, product, rationale, hcpcs = "", frequency = "") =>
+      layers.push({ role, product, rationale, hcpcs, frequency });
+
+    const heavyExudate = ["large", "copious", "heavy"].some((v) => (c.effectiveExudateAmount || "").includes(v));
+    const modExudate = c.effectiveExudateAmount === "moderate" || c.exudateProxy;
+    const lowExudate = !heavyExudate && !modExudate;
+    const infected = c.potentialBioburden || (c.effectiveInfectionSigns && c.effectiveInfectionSigns.length > 0);
+    const cavityOrTunnel = c.cavityLikely || c.hasTunneling || c.hasUndermining;
+    const debridementNeeded = c.debridementNeeded && !c.heelStableEscharException;
+
+    /* Wound cleansing */
+    add("Wound Cleansing", "Normal saline or pH-balanced wound cleanser (spray or irrigation at 4–15 psi)", "Remove loosely adherent debris and exudate before each assessment. Pressurized irrigation preferred for wounds with moderate debris.", "A6216", "Each dressing change");
+
+    /* Primary contact layer */
+    if (debridementNeeded && c.eschar > 0 && !c.venousRelated && !c.arterialRelated) {
+      add("Primary — Autolytic/Enzymatic Debridement", "Amorphous hydrogel (e.g., Medihoney) or cadexomer iodine gel; moisture-retentive secondary dressing", "Hydrogel rehydrates and softens necrotic tissue for autolytic debridement. Cadexomer iodine adds antimicrobial activity. Do not use on ischemic wounds.", "A6248 (hydrogel ≤ 1 oz) / A6251–A6256", infected ? "Daily to every 2 days" : "Every 2–3 days");
+    } else if (infected) {
+      const am = c.diabeticFootRelated
+        ? "Silver-impregnated foam (e.g., Mepilex Ag) or DACC-coated dressing (e.g., Sorbact)"
+        : "Silver-containing foam or hydrofiber (e.g., Aquacel Ag, Biatain Ag)";
+      add("Primary — Antimicrobial", am, "Antimicrobial dressings reduce bacterial load and biofilm. Limit silver to 2–4 weeks then reassess. DACC dressings bind bacteria by hydrophobic interaction without active ingredients.", "A6210–A6215 (foam) / A6196–A6199 (alginate/hydrofiber)", heavyExudate ? "Every 1–2 days" : "Every 2–3 days");
+    } else if (c.venousRelated) {
+      add("Primary — Venous (under compression)", heavyExudate ? "Hydrofiber or alginate sheet (e.g., Aquacel Extra, Kaltostat) under compression" : "Non-adherent foam or silicone contact layer (e.g., Mepitel One, Biatain) under compression", "Venous ulcers require an absorbent or atraumatic primary layer beneath compression. Hydrofiber handles high drainage and forms a gel interface gentle at removal.", heavyExudate ? "A6196–A6199" : "A6210–A6213", "Every 3–7 days under compression bandage");
+      mustDoc.push("Compression system type, layer count, and ankle-heel application technique");
+    } else if (c.cleanBed && c.granulating && !cavityOrTunnel) {
+      add("Primary — Non-Adherent (granulating bed)", lowExudate ? "Silicone non-adherent mesh (e.g., Mepitel One, Adaptic Touch) or petrolatum gauze" : "Soft silicone foam (e.g., Mepilex, Biatain Silicone)", "A clean granulating wound bed requires gentle, non-traumatic coverage. Silicone interfaces minimize pain and disruption at dressing changes.", lowExudate ? "A6216" : "A6210–A6213", lowExudate ? "Every 3–5 days" : "Every 2–4 days");
+    } else if (lowExudate && !debridementNeeded) {
+      add("Primary — Moisture Retention", c.pressureRelated ? "Thin foam dressing (e.g., Mepilex Lite) or silicone-backed hydrocolloid" : "Hydrocolloid thin or transparent film dressing", "Low-exudate wounds risk desiccation. Moisture-retentive dressings maintain the moist environment required for optimal epithelialization.", "A6234–A6241 (hydrocolloid) / A6257–A6259 (transparent film)", "Every 3–5 days or when border lifts");
+    } else {
+      add("Primary — Absorptive Foam", heavyExudate ? "Super-absorbent polymer pad (e.g., Eclypse, DryMax) or alginate sheet" : "Foam dressing (e.g., Mepilex Border, Biatain) with or without adhesive border", "Moderate-to-high exudate requires an absorbent primary layer to prevent periwound maceration.", "A6209–A6215", heavyExudate ? "Daily to every 2 days" : "Every 2–4 days");
+    }
+
+    /* Cavity / tunnel filler */
+    if (cavityOrTunnel) {
+      const filler = infected
+        ? "Iodoform gauze or alginate rope (e.g., Kaltostat Rope) — limit iodoform to 2–4 weeks"
+        : "Alginate rope or hydrofiber rope (e.g., Aquacel ribbon); loose packing only";
+      add("Cavity / Tunnel Filler", filler, "Dead space requires loose packing to maintain drainage, prevent premature surface closure, and reduce anaerobic microenvironment. Leave trailing end visible outside wound for safe removal.", "A6261–A6262 (filler) / A6196–A6199 (alginate rope)", infected ? "Every 1–2 days" : "Every 2–3 days");
+      mustDoc.push("Tunneling/undermining: depth (cm) and clock position documented at each visit");
+    }
+
+    /* Secondary absorbent */
+    if (!c.venousRelated && (heavyExudate || modExudate || cavityOrTunnel)) {
+      add("Secondary Absorbent", heavyExudate ? "Super-absorbent secondary pad (e.g., Eclypse, DryMax Extra) or ABD pad" : "4×4 gauze with ABD pad or foam secondary", "Secondary layer manages exudate strike-through and protects clothing/bedding. Super-absorbent pads reduce change frequency.", "A6234 / super-absorbent A6028", heavyExudate ? "Daily to every 2 days" : "Match primary layer");
+    }
+
+    /* NPWT consideration for deep cavities */
+    if (cavityOrTunnel && (c.tunnelingDepthCm >= 2 || c.depth >= 1.5) && !c.arterialRelated) {
+      add("Consider: Negative Pressure Wound Therapy (NPWT)", "NPWT (e.g., V.A.C. / PICO) — for deep cavities or tunnels not responding to conventional dressings", "NPWT promotes granulation, reduces edema, and manages high exudate in deep cavity wounds. RCT evidence supports use in Stage 3/4 PI, surgical dehiscence, and diabetic foot wounds with significant depth.", "97605–97607 (NPWT ≤50 / >50 sq cm / disposable)", "Per device protocol — typically every 48–72 h");
+      mustDoc.push("Contraindications screened (unexplored fistula, malignancy, exposed vessels/organs, inadequate perfusion)");
+    }
+
+    /* Periwound protection */
+    if (c.periWoundMacerated || c.periWoundErythematous || heavyExudate) {
+      add("Periwound Skin Protection", c.periWoundMacerated
+        ? "Zinc oxide barrier cream or cyanoacrylate liquid film (e.g., Cavilon No Sting) to macerated periwound skin"
+        : "Liquid skin barrier film (e.g., Cavilon, 3M Barrier Film) to periwound skin before adhesive dressings",
+        c.periWoundMacerated ? "Macerated periwound skin is fragile and risks wound extension. Zinc oxide acts as an occlusive moisture barrier; cyanoacrylate film bonds to skin to prevent further maceration." : "High exudate or periwound erythema increases maceration and adhesive trauma risk. Liquid barrier film protects the wound margin.",
+        "A6250 (skin sealant / barrier film)", "Each dressing change");
+    }
+
+    /* Compression (venous / mixed) */
+    if (c.venousRelated && !c.abiInadequateForCompression) {
+      const comp = c.abiMildImpairment
+        ? "Modified compression (15–25 mmHg) — reduced due to mildly impaired ABI; confirm with vascular before applying"
+        : "Full multilayer compression (30–40 mmHg at ankle) — e.g., 4-layer bandage or compression stocking";
+      add("Compression Therapy", comp, "Compression is the cornerstone of venous ulcer healing. RCTs consistently show faster healing and reduced recurrence with sustained ≥ 30 mmHg compression. Multilayer systems and high-compression stockings are equivalent when applied correctly.", "A6531–A6545 (stocking) / A6549 (compression bandage)", "Change every 5–7 days under compression unless soiled");
+      mustDoc.push("ABI documented before compression; system type, layer count, and ankle technique described");
+    } else if (c.abiInadequateForCompression && c.venousRelated) {
+      add("Compression — CONTRAINDICATED", "DO NOT apply standard compression — ABI inadequate. Use non-compressive moisture management dressings only until vascular evaluation is complete.", "Compression with ABI < 0.6 can cause limb-threatening ischemia. Mixed arterial-venous wounds require vascular surgery input before any compression is applied.", "", "");
+      mustDoc.push("ABI documented; vascular surgery referral placed or documented as declined");
+    }
+
+    mustDoc.push("Wound dimensions (L × W × D cm) and tissue composition (% granulation/slough/eschar/epithelialization) at each visit");
+    mustDoc.push("Exudate: amount (none/scant/moderate/large) and character (serous, serosanguineous, purulent)");
+    if (infected) mustDoc.push("Culture results documented; antibiotic rationale if prescribed");
+
+    return { woundLabel, layers, mustDoc, disclaimer: "Dressing suggestions are decision support based on entered data. Verify at bedside; prescriber discretion applies." };
+  }
+
+  function renderDressingRecommendationHtml(dr) {
+    if (!dr || !dr.layers || !dr.layers.length) return "";
+    const layersHtml = dr.layers.map((l) => `
+      <div class="dr-layer">
+        <div class="dr-layer-head">
+          <span class="dr-role">${escapeHtml(l.role)}</span>
+          ${l.frequency ? `<span class="dr-freq">${escapeHtml(l.frequency)}</span>` : ""}
+        </div>
+        <div class="dr-product">${escapeHtml(l.product)}</div>
+        <p class="dr-rationale">${escapeHtml(l.rationale)}</p>
+        ${l.hcpcs ? `<div class="dr-hcpcs">HCPCS: ${escapeHtml(l.hcpcs)}</div>` : ""}
+      </div>`).join("");
+    const mustDocHtml = dr.mustDoc.length
+      ? `<div class="dr-mustdoc-wrap"><strong class="dr-mustdoc-head">Required documentation:</strong><ul class="dr-mustdoc">${dr.mustDoc.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ul></div>`
+      : "";
+    return `
+      <details class="dr-section">
+        <summary class="dr-toggle">
+          <span class="dr-label">Dressing Recommendation</span>
+          <span class="dr-meta">${dr.layers.length} layer${dr.layers.length === 1 ? "" : "s"}</span>
+        </summary>
+        <div class="dr-body">
+          ${layersHtml}
+          ${mustDocHtml}
+          <p class="dr-disclaimer">${escapeHtml(dr.disclaimer)}</p>
+        </div>
+      </details>`;
+  }
+
+  /* ── Plain-text export for Copy All Notes ──────────────────────────────── */
+  function buildPlainTextExport(rows) {
+    if (!rows || !rows.length) return "";
+    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const lines = [`WOUND CARE DOCUMENTATION — ${today}`, "=".repeat(48)];
+
+    const patientGroups = new Map();
+    for (const row of rows) {
+      const name = normalizePersonName(String(row.name || "Unknown patient").trim()) || "Unknown patient";
+      const mrn = String(row.mrn || "").trim();
+      const key = `${name}|${mrn}`;
+      if (!patientGroups.has(key)) patientGroups.set(key, { name, mrn, wounds: [] });
+      patientGroups.get(key).wounds.push(row);
+    }
+
+    for (const patient of patientGroups.values()) {
+      lines.push("", `PATIENT: ${patient.name}${patient.mrn ? ` (MRN: ${patient.mrn})` : ""}`, "-".repeat(40));
+      for (const row of patient.wounds) {
+        const label = [row.wound_type, row.location].filter(Boolean).join(" — ") || "Wound";
+        lines.push("", `[ ${label} ]`);
+        const seg = buildWoundNarrativeSegment(row, "detailed");
+        if (seg) lines.push(seg.replace(/\s+/g, " ").trim());
+
+        const scores = buildWoundScores(row);
+        if (scores.length) {
+          lines.push("", "WOUND SCORES:");
+          for (const s of scores) {
+            lines.push(`  • ${s.name}: ${s.value}`);
+            if (s.interpretation) lines.push(`    ${s.interpretation}`);
+          }
+        }
+
+        const triggers = buildReferralTriggers(row);
+        if (triggers.length) {
+          lines.push("", "REFERRAL CONSIDERATIONS:");
+          for (const t of triggers) {
+            lines.push(`  ${t.urgency === "urgent" ? "⚠ URGENT" : "○ Routine"}: ${t.specialty}`);
+            lines.push(`    ${t.reason}`);
+          }
+        }
+
+        const icd10 = buildICD10Suggestions(row);
+        const cpts = buildCPTSuggestions(row);
+        if (icd10.length) lines.push("", "ICD-10: " + icd10.map((c2) => `${c2.code} (${c2.description})`).join(", "));
+        if (cpts.length) lines.push("CPT:    " + cpts.map((c2) => `${c2.code} (${c2.description})`).join(", "));
+      }
+      lines.push("", "=".repeat(48));
+    }
+    return lines.join("\n");
+  }
+
   function buildChartNarrative(rows, style = "detailed") {
     if (!rows.length) {
       return '<p class="narrative-empty">No wound entries were generated yet.</p>';
@@ -8245,6 +8531,16 @@
         .filter(Boolean)
         .join("");
 
+      const dressingBlocks = patient.wounds
+        .map((row) => renderDressingRecommendationHtml(buildDressingRecommendation(row)))
+        .filter(Boolean)
+        .join("");
+
+      const referralBlocks = patient.wounds
+        .map((row) => renderReferralTriggersHtml(buildReferralTriggers(row)))
+        .filter(Boolean)
+        .join("");
+
       return `
         <section class="narrative-patient">
           <div class="narrative-patient-header">
@@ -8253,6 +8549,8 @@
           </div>
           <p class="narrative-summary">${escapeHtml(fullNarrative)}</p>
           ${scoreBlocks}
+          ${dressingBlocks}
+          ${referralBlocks}
           ${icd10Blocks || ""}
         </section>
       `;
@@ -10189,6 +10487,30 @@
           btn.textContent = "Copied ✓";
           setTimeout(() => { btn.textContent = "Copy Narrative"; }, 2000);
         }
+      });
+    }
+
+    if (els.copyAllNotesBtn) {
+      els.copyAllNotesBtn.addEventListener("click", async () => {
+        const btn = els.copyAllNotesBtn;
+        const rows = latestOutputs?.detailedRows;
+        if (!rows || !rows.length) { setStatus("Generate considerations first."); return; }
+        const text = buildPlainTextExport(rows);
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.cssText = "position:fixed;opacity:0;pointer-events:none;";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+        const original = btn.textContent;
+        btn.textContent = "Copied ✓";
+        btn.disabled = true;
+        setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2500);
       });
     }
 

@@ -2633,3 +2633,135 @@ body.name-gate-active {
     border-radius: 11px;
   }
 }
+
+/* ── Copy All Button ─────────────────────────────────────────────────────── */
+.copy-all-btn {
+  font-size: 0.82rem;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1.5px solid var(--accent);
+  background: #fff;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.15s, color 0.15s;
+}
+.copy-all-btn:hover { background: var(--accent); color: #fff; }
+.copy-all-btn:active { opacity: 0.85; }
+
+/* ── Dressing Recommendation Block ─────────────────────────────────────── */
+.dr-section {
+  margin-top: 10px;
+  border: 1.5px solid #a8d0c4;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f7fbf9;
+}
+.dr-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  background: #d8eeea;
+  list-style: none;
+  user-select: none;
+}
+.dr-toggle::-webkit-details-marker { display: none; }
+.dr-toggle::after {
+  content: "›";
+  margin-left: auto;
+  font-size: 1.1rem;
+  color: #2a6055;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.dr-section[open] > .dr-toggle::after { transform: rotate(90deg); }
+.dr-label { font-weight: 700; font-size: 0.92rem; color: #1b3a34; flex-shrink: 0; }
+.dr-meta { font-size: 0.78rem; color: #3a6a62; flex: 1; }
+.dr-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.dr-layer {
+  border: 1px solid #c2e0da;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+}
+.dr-layer-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+.dr-role { font-weight: 700; font-size: 0.87rem; color: #1b3a34; }
+.dr-freq { font-size: 0.78rem; color: #3a6a62; font-style: italic; }
+.dr-product { font-size: 0.88rem; color: #1a2e29; font-weight: 600; margin-bottom: 4px; }
+.dr-rationale { font-size: 0.81rem; color: var(--ink); line-height: 1.5; margin: 0 0 4px; }
+.dr-hcpcs { font-size: 0.77rem; color: #4a6a62; }
+.dr-mustdoc-wrap { margin-top: 4px; }
+.dr-mustdoc-head { font-size: 0.82rem; color: #1b3a34; }
+.dr-mustdoc { margin: 4px 0 0 16px; padding: 0; font-size: 0.81rem; color: var(--ink); line-height: 1.6; }
+.dr-mustdoc li { margin-bottom: 2px; }
+.dr-disclaimer { font-size: 0.74rem; color: var(--ink-soft); font-style: italic; margin: 0; line-height: 1.5; }
+
+/* ── Referral Triggers Block ─────────────────────────────────────────────── */
+.ref-section {
+  margin-top: 10px;
+  border: 1.5px solid #e0c87a;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fdfbf2;
+}
+.ref-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  background: #f5edcc;
+  list-style: none;
+  user-select: none;
+}
+.ref-toggle::-webkit-details-marker { display: none; }
+.ref-toggle::after {
+  content: "›";
+  margin-left: auto;
+  font-size: 1.1rem;
+  color: #7a5c00;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.ref-section[open] > .ref-toggle::after { transform: rotate(90deg); }
+.ref-label { font-weight: 700; font-size: 0.92rem; color: #4a3800; flex-shrink: 0; }
+.ref-meta { font-size: 0.78rem; color: #7a5c00; flex: 1; }
+.ref-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.ref-trigger {
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.ref-trigger-urgent { border: 1.5px solid #d4735a; }
+.ref-trigger-routine { border: 1px solid #d4bb6a; }
+.ref-trigger-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.ref-specialty { font-weight: 700; font-size: 0.87rem; color: #2a1c10; }
+.ref-urgency-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ref-urgent { background: #f8e4df; color: #8a2a10; }
+.ref-routine { background: #fdf5da; color: #7a5c00; }
+.ref-reason { font-size: 0.84rem; color: var(--ink); line-height: 1.5; margin: 0 0 4px; }
+.ref-detail { font-size: 0.80rem; color: var(--ink-soft); line-height: 1.45; margin: 0; }
+.ref-disclaimer { font-size: 0.74rem; color: var(--ink-soft); font-style: italic; margin: 0; line-height: 1.5; }
