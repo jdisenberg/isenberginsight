@@ -8360,7 +8360,7 @@
         clearTimeout(tapTimer);
         if (tapCount >= TAPS_NEEDED) {
           resetTaps();
-          openAuditLogPanel();
+          if (authState?.role === "admin") openAuditLogPanel();
           return;
         }
         tapTimer = setTimeout(resetTaps, TAP_WINDOW_MS);

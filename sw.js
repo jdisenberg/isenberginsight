@@ -5,7 +5,7 @@
  * No patient data, wound data, or session content is cached.
  */
 
-const CACHE_NAME = "cicatrix-shell-v13";
+const CACHE_NAME = "cicatrix-shell-v14";
 const SHELL_URLS = ["/index.html", "/app.js", "/styles.css"];
 
 /* ── Install: pre-cache app shell ───────────────────────────────────────── */
