@@ -2185,6 +2185,23 @@ body.name-gate-active {
 .az-analyze-btn:hover { background: var(--accent); color: #fff; }
 .az-analyze-btn:active { transform: translateY(1px); }
 
+/* Retained-photo thumbnail on the wound card */
+.az-thumb-slot:empty { display: none; }
+.az-thumb-slot {
+  display: inline-flex;
+  cursor: pointer;
+}
+.az-thumb {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1.5px solid var(--accent);
+  display: block;
+  transition: transform 90ms ease;
+}
+.az-thumb:hover { transform: scale(1.06); }
+
 /* Modal overlay */
 .wound-analyzer-overlay {
   position: fixed;

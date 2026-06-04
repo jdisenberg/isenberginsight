@@ -762,16 +762,45 @@
     let isDrawing = false;
     let results   = null;     /* {pct, lCm, wCm, areaCm} */
 
+    /* Per-card retained photos — IN-MEMORY ONLY.
+       Keyed by the card's manualWoundId. Holds an object URL (blob ref) and
+       the last analysis state so the user can re-open a wound's photo.
+       Nothing here is written to localStorage, IndexedDB, cookies, or the
+       server — it lives only in this JS closure and is gone when the tab
+       (document) is destroyed. */
+    const cardPhotos = new Map();
+
     /* ── element helpers ── */
     const $  = (id) => document.getElementById(id);
     const cvs = () => $("analyzerCanvas");
+    const cardKey = (card) => card && card.dataset ? card.dataset.manualWoundId : null;
 
     /* ── open / close ── */
     function open(card) {
       activeCard = card;
-      reset();
+      blankState();
       const m = $("woundAnalyzerModal");
       if (m) { m.hidden = false; document.body.style.overflow = "hidden"; }
+
+      const saved = cardPhotos.get(cardKey(card));
+      if (saved && saved.objectUrl) {
+        /* Restore retained photo + prior trace/results for this card */
+        const img = new Image();
+        img.onload = () => {
+          photo = img; photoW = img.naturalWidth; photoH = img.naturalHeight;
+          rulerPts = saved.rulerPts ? saved.rulerPts.map((p) => ({ ...p })) : [];
+          pxPerCm  = saved.pxPerCm || null;
+          woundPath = saved.woundPath ? saved.woundPath.map((p) => ({ ...p })) : [];
+          results  = saved.results || null;
+          const cm = $("analyzerRulerCm");
+          if (cm && saved.rulerCmValue) cm.value = saved.rulerCmValue;
+          if (results) { setStep(4); renderResults(); }
+          else setStep(2);
+          setupCanvas(); /* size to the now-visible container */
+        };
+        img.src = saved.objectUrl;
+        return;
+      }
       setStep(1);
     }
 
@@ -782,13 +811,52 @@
       activeCard = null;
     }
 
-    function reset() {
+    /* Reset only the live working state — does NOT touch retained card photos */
+    function blankState() {
       photo = null; photoW = photoH = 0; canvW = canvH = 0; imgScale = 1;
       rulerPts = []; pxPerCm = null; woundPath = []; isDrawing = false; results = null;
       const inp = $("analyzerPhotoInput"); if (inp) inp.value = "";
       const cm  = $("analyzerRulerCm");   if (cm)  cm.value  = "";
       const c = cvs();
       if (c) { const ctx = c.getContext("2d"); ctx.clearRect(0, 0, c.width, c.height); }
+    }
+
+    /* Persist current working state to the in-memory map for the active card */
+    function saveCardState(objectUrl) {
+      const key = cardKey(activeCard);
+      if (!key) return;
+      const prev = cardPhotos.get(key);
+      const url = objectUrl || (prev && prev.objectUrl) || null;
+      if (!url) return;
+      cardPhotos.set(key, {
+        objectUrl: url,
+        rulerPts: rulerPts.map((p) => ({ ...p })),
+        pxPerCm,
+        rulerCmValue: $("analyzerRulerCm")?.value || "",
+        woundPath: woundPath.map((p) => ({ ...p })),
+        results: results ? JSON.parse(JSON.stringify(results)) : null,
+      });
+      renderCardThumb(activeCard, url);
+    }
+
+    /* Small clickable thumbnail on the wound card (re-opens the analyzer) */
+    function renderCardThumb(card, url) {
+      if (!card) return;
+      const slot = card.querySelector("[data-az-thumb-slot]");
+      if (!slot) return;
+      slot.innerHTML =
+        `<img class="az-thumb" src="${url}" alt="Wound photo" title="Re-open wound photo" />`;
+    }
+
+    /* Forget a card's retained photo and free its blob (called on card removal) */
+    function forgetCard(card) {
+      const key = cardKey(card);
+      if (!key) return;
+      const saved = cardPhotos.get(key);
+      if (saved && saved.objectUrl) {
+        try { URL.revokeObjectURL(saved.objectUrl); } catch { /* ignore */ }
+      }
+      cardPhotos.delete(key);
     }
 
     /* ── step management ── */
@@ -1020,14 +1088,12 @@
 
       const counts = { granulation: 0, slough: 0, eschar: 0, epithelialization: 0 };
       let total = 0;
-      let polyPixels = 0; /* pixels inside the outline, for area */
-      /* sample every 2nd pixel in each direction */
+      /* sample every 2nd pixel in each direction; classify only pixels that
+         fall inside the traced outline so healthy skin is excluded */
       const stride = 2;
       for (let y = 0; y < rh; y += stride) {
         for (let x = 0; x < rw; x += stride) {
-          /* point-in-polygon test using full-image coords */
           if (!pointInPath(ix1 + x, iy1 + y, woundPath)) continue;
-          polyPixels++;
           const idx = (y * rw + x) * 4;
           if (data[idx + 3] < 128) continue;
           counts[classifyPixel(data[idx], data[idx + 1], data[idx + 2])]++;
@@ -1047,13 +1113,48 @@
 
       let lCm = null, wCm = null, areaCm = null;
       if (pxPerCm) {
-        /* length/width from bounding box; area from actual traced region */
-        lCm   = parseFloat((Math.max(rw, rh) / pxPerCm).toFixed(1));
-        wCm   = parseFloat((Math.min(rw, rh) / pxPerCm).toFixed(1));
-        const sampledArea = polyPixels * stride * stride; /* px² inside outline */
-        areaCm = parseFloat((sampledArea / (pxPerCm * pxPerCm)).toFixed(2));
+        /* Clinical convention: greatest length = the two furthest points on the
+           outline; greatest width = widest extent perpendicular to that length
+           axis. Area = length × width (the two lines form right angles). */
+        const lw = greatestLengthWidthPx(woundPath);
+        lCm    = parseFloat((lw.lengthPx / pxPerCm).toFixed(1));
+        wCm    = parseFloat((lw.widthPx  / pxPerCm).toFixed(1));
+        areaCm = parseFloat((lCm * wCm).toFixed(2));
       }
       return { pct, lCm, wCm, areaCm };
+    }
+
+    /* Greatest length (max distance between any two outline points) and the
+       greatest width measured perpendicular to that length axis (px). */
+    function greatestLengthWidthPx(path) {
+      if (!path || path.length < 2) return { lengthPx: 0, widthPx: 0 };
+      /* downsample for the O(n²) furthest-pair search if the trace is dense */
+      const pts = path.length > 240
+        ? path.filter((_, i) => i % Math.ceil(path.length / 240) === 0)
+        : path;
+      let aIdx = 0, bIdx = 1, maxD2 = -1;
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const dx = pts[j].ix - pts[i].ix;
+          const dy = pts[j].iy - pts[i].iy;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > maxD2) { maxD2 = d2; aIdx = i; bIdx = j; }
+        }
+      }
+      const A = pts[aIdx], B = pts[bIdx];
+      const lengthPx = Math.sqrt(maxD2);
+      if (lengthPx === 0) return { lengthPx: 0, widthPx: 0 };
+      /* unit vector along length, then its perpendicular */
+      const ux = (B.ix - A.ix) / lengthPx;
+      const uy = (B.iy - A.iy) / lengthPx;
+      const px = -uy, py = ux; /* perpendicular */
+      let minP = Infinity, maxP = -Infinity;
+      for (const p of path) {
+        const proj = (p.ix - A.ix) * px + (p.iy - A.iy) * py;
+        if (proj < minP) minP = proj;
+        if (proj > maxP) maxP = proj;
+      }
+      return { lengthPx, widthPx: maxP - minP };
     }
 
     /* ── results ── */
@@ -1061,7 +1162,7 @@
       const panel = $("analyzerResults"); if (!panel) return;
       const { pct, lCm, wCm, areaCm } = results;
       const sizeHtml = lCm != null
-        ? `<strong>${lCm} × ${wCm} cm</strong> &nbsp;(traced area&nbsp;${areaCm}&nbsp;cm²)`
+        ? `<strong>${lCm} × ${wCm} cm</strong> &nbsp;(area&nbsp;${areaCm}&nbsp;cm²)`
         : `<em>No ruler — size not calculated. <a href="#" id="azGoBackRuler">Go back to add ruler.</a></em>`;
 
       panel.innerHTML = `
@@ -1105,6 +1206,7 @@
       activeCard.querySelectorAll("[data-field]").forEach((el) =>
         el.dispatchEvent(new Event("change", { bubbles: true }))
       );
+      saveCardState(); /* retain photo + this analysis for re-opening */
       close();
     }
 
@@ -1132,15 +1234,18 @@
     /* ── photo input ── */
     function onPhotoChange(evt) {
       const file = evt.target.files?.[0]; if (!file) return;
+      /* free any previously retained blob for this card before replacing */
+      const prev = cardPhotos.get(cardKey(activeCard));
+      if (prev && prev.objectUrl) { try { URL.revokeObjectURL(prev.objectUrl); } catch { /* ignore */ } }
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
         photo = img; photoW = img.naturalWidth; photoH = img.naturalHeight;
-        setupCanvas();
-        const nb = $("analyzerNextBtn"); if (nb) nb.disabled = false;
-        setStep(1); /* re-render step 1 indicator as done-ready */
-        /* advance automatically */
-        setStep(2);
+        /* new photo clears any prior trace/results for this card */
+        rulerPts = []; pxPerCm = null; woundPath = []; results = null;
+        saveCardState(url); /* retain photo in memory + show thumbnail */
+        setStep(2);         /* advance to ruler step (unhides canvas) */
+        setupCanvas();      /* size to the now-visible container */
       };
       img.src = url;
     }
@@ -1187,6 +1292,13 @@
 
     /* expose globally for event delegation */
     window.openWoundAnalyzer = open;
+    window.forgetWoundPhoto = forgetCard;
+
+    /* free all retained blobs when the tab/document is going away */
+    window.addEventListener("pagehide", () => {
+      cardPhotos.forEach((s) => { if (s.objectUrl) { try { URL.revokeObjectURL(s.objectUrl); } catch { /* ignore */ } } });
+      cardPhotos.clear();
+    });
 
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
     else init();
@@ -8507,6 +8619,7 @@
       <div class="manual-wound-head">
         <h3 class="manual-wound-title">Wound ${escapeHtml(String(cardNumber))}</h3>
         <div class="manual-wound-head-actions">
+          <span class="az-thumb-slot" data-az-thumb-slot data-manual-action="open-analyzer"></span>
           <button type="button" class="az-analyze-btn" data-manual-action="open-analyzer" title="Analyze a wound photo to auto-fill measurements and tissue %">📷 Analyze Photo</button>
           <button class="manual-remove-btn" type="button" data-manual-action="remove">Remove</button>
         </div>
@@ -8714,6 +8827,7 @@
       const card = remove.closest(".manual-wound-card");
       const cards = els.manualWoundList ? els.manualWoundList.querySelectorAll(".manual-wound-card") : [];
       if (!card || cards.length <= 1) return;
+      if (typeof window.forgetWoundPhoto === "function") window.forgetWoundPhoto(card);
       card.remove();
       renumberManualWoundCards();
       return;
