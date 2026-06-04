@@ -7771,6 +7771,38 @@
       });
     }
 
+    /* ── Auto-fill required documentation from the Patient Clinical Profile ── */
+    const pp = c.patientProfile || {};
+    const abiVal = String(row.abi_range || "").trim();
+    const abiLabelMap = {
+      normal: "≥ 0.9 (normal)", mild: "0.7–0.89 (mild)", moderate: "0.5–0.69 (moderate)",
+      severe: "< 0.5 (severe)", calcified: "non-compressible / calcified",
+    };
+    const fillDoc = (matcher, value) => {
+      if (!value) return;
+      chart.forEach((x) => { if (matcher.test(x.item)) { x.done = true; x.value = value; } });
+    };
+    if (pp.hba1c != null) fillDoc(/hba1c/i, `${pp.hba1c}%`);
+    if (abiVal && abiLabelMap[abiVal]) fillDoc(/\bABI\b|Vascular status/i, `ABI ${abiLabelMap[abiVal]}`);
+    const bradenScore = scoreBraden(pp);
+    if (bradenScore) fillDoc(/Braden/i, bradenScore.value);
+    if (pp.cultures && pp.cultures.length) fillDoc(/culture/i, labelsForOverrideValues(pp.cultures).join(", "));
+
+    /* Add a nutritional-status documentation row when advanced therapy is in
+       play or malnutrition risk is present, pre-filled from labs if available. */
+    if (advancedTherapyContext || (c.patientFactors && c.patientFactors.malnutritionRisk)) {
+      const nutritionDetail = [];
+      if (pp.albumin != null) nutritionDetail.push(`albumin ${pp.albumin} g/dL`);
+      if (pp.prealbumin != null) nutritionDetail.push(`prealbumin ${pp.prealbumin} mg/dL`);
+      chart.push({
+        req: false,
+        item: "Nutritional status",
+        detail: "Albumin / prealbumin and nutrition plan — supports medical necessity for advanced therapies and CTP eligibility",
+        done: nutritionDetail.length > 0,
+        value: nutritionDetail.join(", "),
+      });
+    }
+
     return { chart, dressings, advanced };
   }
 
@@ -7780,12 +7812,15 @@
     const { chart, dressings, advanced } = guide;
     const woundLabel = [row.wound_type, row.location].filter(Boolean).join(" — ");
 
-    const chartHtml = chart.map((it) =>
-      `<tr class="cms-row">
+    const chartHtml = chart.map((it) => {
+      const onFile = it.done
+        ? `<div class="cms-onfile">✓ On file from patient profile${it.value ? `: ${escapeHtml(it.value)}` : ""}</div>`
+        : "";
+      return `<tr class="cms-row${it.done ? " cms-row-done" : ""}">
         <td class="cms-item"><span class="cms-badge ${it.req ? "cms-req" : "cms-opt"}">${it.req ? "Required" : "Helpful"}</span> ${escapeHtml(it.item)}</td>
-        <td class="cms-detail">${escapeHtml(it.detail)}</td>
-      </tr>`
-    ).join("");
+        <td class="cms-detail">${escapeHtml(it.detail)}${onFile}</td>
+      </tr>`;
+    }).join("");
 
     const dressingHtml = dressings.map((d) =>
       `<div class="cms-block">

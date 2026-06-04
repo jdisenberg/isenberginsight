@@ -2162,6 +2162,14 @@ body.name-gate-active {
   font-size: 0.8rem;
 }
 
+.cms-onfile {
+  margin-top: 4px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #2a5a30;
+}
+.cms-row-done .cms-item { background: #f1f8f0; }
+
 /* Dressing blocks */
 .cms-block {
   border: 1px solid #d0dde5;
