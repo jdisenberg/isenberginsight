@@ -2010,6 +2010,63 @@ body.name-gate-active {
 .cms-guide-panel { margin: 0 0 12px; }
 .cms-guide-panel .cms-guide-section:first-child { margin-top: 0; }
 
+/* Wound Scores & Classifications */
+.scores-section {
+  margin-top: 14px;
+  border: 1.5px solid #c4b5d0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #faf8fc;
+}
+.scores-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  background: #ece4f3;
+  list-style: none;
+  user-select: none;
+}
+.scores-toggle::-webkit-details-marker { display: none; }
+.scores-label { font-weight: 700; font-size: 0.92rem; color: #3d2a52; flex-shrink: 0; }
+.scores-meta { font-size: 0.78rem; color: #6a5a7c; flex: 1; }
+.scores-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+
+.ws-block {
+  border: 1px solid #e2d8ec;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+}
+.ws-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ws-name { font-weight: 700; font-size: 0.88rem; color: #2a1c38; }
+.ws-score { font-weight: 800; font-size: 0.9rem; color: #6b1f2a; }
+.ws-interp { margin: 6px 0 0; font-size: 0.82rem; color: var(--ink); line-height: 1.5; }
+.ws-note { margin: 7px 0 0; font-size: 0.8rem; color: #6b1f2a; font-weight: 600; line-height: 1.45; }
+
+.ws-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.ws-table td { padding: 3px 4px; font-size: 0.82rem; vertical-align: top; }
+.ws-item { color: var(--ink); }
+.ws-val { text-align: right; color: var(--ink-soft); white-space: nowrap; }
+.ws-met .ws-item { color: #2a5a30; font-weight: 600; }
+.ws-unmet .ws-item { color: var(--ink-soft); }
+.ws-sub .ws-item { font-weight: 700; color: #3d2a52; padding-top: 8px; }
+.ws-sub .ws-val { font-weight: 700; color: #3d2a52; padding-top: 8px; }
+.ws-disclaimer {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin: 0;
+  line-height: 1.5;
+}
+
 .cms-guide-section {
   margin-top: 14px;
   border: 1.5px solid #b5c4d0;

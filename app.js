@@ -334,7 +334,57 @@
     vitamin_d:    [0, 200],
     tcpo2:        [0, 200],
     toe_pressure: [0, 300],
+    /* Braden Scale subscale points (pressure injury risk) */
+    braden_sensory:   [0, 4],
+    braden_moisture:  [0, 4],
+    braden_activity:  [0, 4],
+    braden_mobility:  [0, 4],
+    braden_nutrition: [0, 4],
+    braden_friction:  [0, 3],
   };
+
+  /* Braden Scale subscale options — value carries the point score */
+  const BRADEN_SENSORY_OPTIONS = [
+    { value: "", label: "Not assessed" },
+    { value: "1", label: "1 — Completely limited" },
+    { value: "2", label: "2 — Very limited" },
+    { value: "3", label: "3 — Slightly limited" },
+    { value: "4", label: "4 — No impairment" },
+  ];
+  const BRADEN_MOISTURE_OPTIONS = [
+    { value: "", label: "Not assessed" },
+    { value: "1", label: "1 — Constantly moist" },
+    { value: "2", label: "2 — Often moist" },
+    { value: "3", label: "3 — Occasionally moist" },
+    { value: "4", label: "4 — Rarely moist" },
+  ];
+  const BRADEN_ACTIVITY_OPTIONS = [
+    { value: "", label: "Not assessed" },
+    { value: "1", label: "1 — Bedfast" },
+    { value: "2", label: "2 — Chairfast" },
+    { value: "3", label: "3 — Walks occasionally" },
+    { value: "4", label: "4 — Walks frequently" },
+  ];
+  const BRADEN_MOBILITY_OPTIONS = [
+    { value: "", label: "Not assessed" },
+    { value: "1", label: "1 — Completely immobile" },
+    { value: "2", label: "2 — Very limited" },
+    { value: "3", label: "3 — Slightly limited" },
+    { value: "4", label: "4 — No limitation" },
+  ];
+  const BRADEN_NUTRITION_OPTIONS = [
+    { value: "", label: "Not assessed" },
+    { value: "1", label: "1 — Very poor" },
+    { value: "2", label: "2 — Probably inadequate" },
+    { value: "3", label: "3 — Adequate" },
+    { value: "4", label: "4 — Excellent" },
+  ];
+  const BRADEN_FRICTION_OPTIONS = [
+    { value: "", label: "Not assessed" },
+    { value: "1", label: "1 — Problem" },
+    { value: "2", label: "2 — Potential problem" },
+    { value: "3", label: "3 — No apparent problem" },
+  ];
 
   const OVERRIDE_VALUE_LABELS = new Map(
     []
@@ -7910,6 +7960,153 @@
       </div>`;
   }
 
+  /* ── Validated wound scores & classifications ─────────────────────────── */
+  function buildWoundScores(row) {
+    const c = buildContext(row, null, row.manual_overrides || null);
+    const out = [];
+    if (c.pressureRelated) out.push(scorePressureStaging(c, row));
+    if (c.diabeticFootRelated) { out.push(scoreWagner(c)); out.push(scoreTexas(c)); }
+    if (c.isActive && !c.looksClosed) out.push(scoreInfection(c));
+    const braden = scoreBraden(c.patientProfile);
+    if (braden) out.push(braden);
+    return out.filter(Boolean);
+  }
+
+  function scorePressureStaging(c, row) {
+    const exposed = new Set(c.effectiveExposedStructures || []);
+    const deepList = ["bone", "tendon", "muscle", "capsule", "joint"];
+    const deep = deepList.some((s) => exposed.has(s));
+    const obscured = (Number(c.eschar || 0) + Number(c.slough || 0)) >= 75 || c.manualThickness === "eschar_covered";
+    let stage, why;
+    if (obscured && !deep) { stage = "Unstageable"; why = "Base obscured by slough/eschar — full depth cannot be visualized until debrided."; }
+    else if (deep) { stage = "Stage 4"; why = `Exposed ${deepList.filter((s) => exposed.has(s)).join(", ")} — full-thickness loss with exposed deep structure.`; }
+    else if (c.manualThickness === "full_thickness" || Number(c.depth || 0) >= 0.2 || c.cavityLikely) { stage = "Stage 3"; why = "Full-thickness skin loss; subcutaneous fat may be visible, no exposed deeper structure."; }
+    else if (c.manualThickness === "partial_thickness") { stage = "Stage 2"; why = "Partial-thickness loss / shallow open ulcer or blister."; }
+    else { stage = "Stage 1 / suspected DTI"; why = "Intact skin or undetermined depth — assess non-blanchable erythema (Stage 1) vs deep tissue injury."; }
+    const documented = String(row.stage || "").trim();
+    return { name: "Pressure Injury Stage (suggested)", value: stage, interpretation: why, items: [], note: documented ? `Charted stage: "${documented}" — reconcile if different.` : "" };
+  }
+
+  function scoreWagner(c) {
+    const exposed = new Set(c.effectiveExposedStructures || []);
+    const gangrene = c.woundTypeText.includes("gangrene") || (Number(c.eschar || 0) >= 60 && c.arterialRelated);
+    let g, label;
+    if (gangrene && (c.woundTypeText.includes("whole foot") || c.woundTypeText.includes("extensive"))) { g = 5; label = "Extensive gangrene of the foot"; }
+    else if (gangrene) { g = 4; label = "Localized gangrene (forefoot or heel)"; }
+    else if (exposed.has("bone") || c.osteomyelitisSignal) { g = 3; label = "Deep ulcer with abscess or osteomyelitis"; }
+    else if (["tendon", "capsule", "joint", "muscle"].some((s) => exposed.has(s))) { g = 2; label = "Ulcer penetrating to tendon, capsule, or muscle"; }
+    else if (Number(c.area || 0) > 0 || Number(c.depth || 0) > 0) { g = 1; label = "Superficial ulcer (skin thickness)"; }
+    else { g = 0; label = "Intact skin / pre- or post-ulcerative lesion"; }
+    return { name: "Wagner Diabetic Foot Grade", value: `Grade ${g}`, interpretation: label, items: [], note: g >= 3 ? "Grade ≥3 — urgent vascular & surgical evaluation; image to assess for osteomyelitis." : "" };
+  }
+
+  function scoreTexas(c) {
+    const exposed = new Set(c.effectiveExposedStructures || []);
+    let grade;
+    if (exposed.has("bone") || exposed.has("joint") || c.osteomyelitisSignal) grade = "III";
+    else if (["tendon", "capsule", "muscle"].some((s) => exposed.has(s))) grade = "II";
+    else if (Number(c.area || 0) > 0 || Number(c.depth || 0) > 0) grade = "I";
+    else grade = "0";
+    const infected = (c.effectiveInfectionSigns || []).length >= 2 || c.potentialBioburden;
+    const ischemic = c.arterialRelated || c.abiInadequateForCompression || c.abiMildImpairment;
+    let stage, sl;
+    if (infected && ischemic) { stage = "D"; sl = "infection + ischemia"; }
+    else if (ischemic) { stage = "C"; sl = "ischemia"; }
+    else if (infected) { stage = "B"; sl = "infection"; }
+    else { stage = "A"; sl = "clean, non-ischemic"; }
+    return { name: "University of Texas DFU Classification", value: `Grade ${grade} · Stage ${stage}`, interpretation: `Depth grade ${grade}; ${sl}.`, items: [], note: stage === "D" ? "Stage D (infection + ischemia) carries the highest amputation risk." : "" };
+  }
+
+  function scoreInfection(c) {
+    const signs = new Set(c.effectiveInfectionSigns || []);
+    const exposed = new Set(c.effectiveExposedStructures || []);
+    const odorBad = c.effectiveOdor === "moderate" || c.effectiveOdor === "strong_foul" || signs.has("malodor");
+    const exudateHi = ["moderate", "large", "copious"].includes(c.effectiveExudateAmount) || c.exudateProxy || signs.has("purulent_drainage");
+    const nonHealing = c.stalled || c.chronic || signs.has("delayed_healing");
+    const debris = Number(c.slough || 0) > 0 || Number(c.eschar || 0) > 0 || c.reportNecroticSignal;
+    const friable = signs.has("friable_tissue");
+    const sizeUp = c.worsening && (c.areaChangePct == null || c.areaChangePct > 0);
+    const os = exposed.has("bone") || c.osteomyelitisSignal;
+    const erythemaEdema = signs.has("erythema") || signs.has("edema");
+    const warmth = signs.has("warmth") || signs.has("increased_pain");
+
+    const nerds = [
+      { label: "Non-healing wound", met: nonHealing },
+      { label: "Exudative", met: exudateHi },
+      { label: "Red, friable granulation", met: friable },
+      { label: "Debris (slough/necrosis)", met: debris },
+      { label: "Smell (malodor)", met: odorBad },
+    ];
+    const stonees = [
+      { label: "Size increasing", met: sizeUp },
+      { label: "Temperature ↑ / increased pain", met: warmth },
+      { label: "Os — probes to / exposed bone", met: os },
+      { label: "Exudate", met: exudateHi },
+      { label: "Erythema / Edema", met: erythemaEdema },
+      { label: "Smell (malodor)", met: odorBad },
+    ];
+    const nCount = nerds.filter((x) => x.met).length;
+    const sCount = stonees.filter((x) => x.met).length;
+    const toItem = (x) => ({ label: x.label, met: x.met, value: x.met ? "yes" : "no" });
+    const items = [{ label: "NERDS — superficial / local infection", value: `${nCount}/5` }]
+      .concat(nerds.map(toItem))
+      .concat([{ label: "STONEES — deep / surrounding infection", value: `${sCount}/6` }])
+      .concat(stonees.map(toItem));
+    const notes = [];
+    if (nCount >= 3) notes.push("NERDS ≥3 → superficial infection likely — consider a topical antimicrobial dressing.");
+    if (sCount >= 3) notes.push("STONEES ≥3 → deep/surrounding infection likely — consider systemic antibiotics, cultures, and imaging.");
+    if (!notes.length) notes.push("Below treatment thresholds — continue monitoring for infection.");
+    return { name: "Infection Screen (NERDS / STONEES)", value: `NERDS ${nCount}/5 · STONEES ${sCount}/6`, interpretation: "", items, note: notes.join(" ") };
+  }
+
+  function scoreBraden(p) {
+    if (!p) return null;
+    const keys = ["braden_sensory", "braden_moisture", "braden_activity", "braden_mobility", "braden_nutrition", "braden_friction"];
+    const vals = keys.map((k) => p[k]);
+    if (vals.some((v) => v == null)) return null; /* need all six subscales */
+    const total = vals.reduce((a, b) => a + Number(b), 0);
+    const risk = total <= 9 ? "Very high risk" : total <= 12 ? "High risk" : total <= 14 ? "Moderate risk" : total <= 18 ? "Mild risk" : "Not at risk";
+    const labels = ["Sensory perception", "Moisture", "Activity", "Mobility", "Nutrition", "Friction & shear"];
+    const items = keys.map((k, i) => ({ label: labels[i], value: String(vals[i]) }));
+    return {
+      name: "Braden Pressure Injury Risk",
+      value: `${total} / 23 — ${risk}`,
+      interpretation: total <= 18 ? "At risk — implement a prevention bundle (repositioning schedule, support surface, moisture & nutrition management)." : "",
+      items, note: "",
+    };
+  }
+
+  function renderWoundScoresHtml(scores) {
+    if (!scores || !scores.length) return "";
+    const blocks = scores.map((s) => {
+      const itemsHtml = (s.items && s.items.length)
+        ? `<table class="ws-table">${s.items.map((it) => {
+            const mark = it.met === true ? "✓ " : it.met === false ? "✗ " : "";
+            const rowClass = it.met === true ? "ws-met" : it.met === false ? "ws-unmet" : "ws-sub";
+            return `<tr class="${rowClass}"><td class="ws-item">${mark}${escapeHtml(it.label)}</td><td class="ws-val">${escapeHtml(it.value || "")}</td></tr>`;
+          }).join("")}</table>`
+        : "";
+      return `
+        <div class="ws-block">
+          <div class="ws-head"><span class="ws-name">${escapeHtml(s.name)}</span><span class="ws-score">${escapeHtml(s.value)}</span></div>
+          ${s.interpretation ? `<p class="ws-interp">${escapeHtml(s.interpretation)}</p>` : ""}
+          ${itemsHtml}
+          ${s.note ? `<p class="ws-note">${escapeHtml(s.note)}</p>` : ""}
+        </div>`;
+    }).join("");
+    return `
+      <details class="scores-section">
+        <summary class="scores-toggle">
+          <span class="scores-label">Wound Scores &amp; Classifications</span>
+          <span class="scores-meta">${scores.length} tool${scores.length === 1 ? "" : "s"}</span>
+        </summary>
+        <div class="scores-body">
+          ${blocks}
+          <p class="ws-disclaimer">Suggested classifications are decision support based on entered data — verify against direct examination before charting.</p>
+        </div>
+      </details>`;
+  }
+
   function buildChartNarrative(rows, style = "detailed") {
     if (!rows.length) {
       return '<p class="narrative-empty">No wound entries were generated yet.</p>';
@@ -7970,6 +8167,11 @@
         .filter(Boolean)
         .join("");
 
+      const scoreBlocks = patient.wounds
+        .map((row) => renderWoundScoresHtml(buildWoundScores(row)))
+        .filter(Boolean)
+        .join("");
+
       return `
         <section class="narrative-patient">
           <div class="narrative-patient-header">
@@ -7977,6 +8179,7 @@
             <button class="copy-narrative-btn" type="button" data-narrative="${escapeHtml(fullNarrative)}" title="Copy narrative to clipboard">Copy Narrative</button>
           </div>
           <p class="narrative-summary">${escapeHtml(fullNarrative)}</p>
+          ${scoreBlocks}
           ${pushBlocks}
           ${icd10Blocks || ""}
         </section>
@@ -8928,6 +9131,9 @@
     return manualInput(field, "number", "%", 'step="1" min="0" max="100" inputmode="decimal"');
   }
 
+  /* Braden subscale value (number|null) → option string for the select */
+  function bradenVal(v) { return (v != null && v !== "") ? String(v) : ""; }
+
   /* Patient-profile numeric input (data-field is prefixed "patient_") */
   function manualPatientNumber(field, unit = "", value = null, step = "0.1") {
     const v = (value != null && value !== "") ? ` value="${escapeHtml(String(value))}"` : "";
@@ -9175,6 +9381,34 @@
           <label class="manual-field">
             <span>Toe Pressure (mmHg)</span>
             ${manualPatientNumber("toe_pressure", "mmHg", patient.toe_pressure, "1")}
+          </label>
+        </div>
+
+        <h4 class="manual-subhead">Pressure Injury Risk — Braden Scale</h4>
+        <div class="manual-grid manual-prior">
+          <label class="manual-field">
+            <span>Sensory Perception</span>
+            ${manualSelect(BRADEN_SENSORY_OPTIONS, "patient_braden_sensory", bradenVal(patient.braden_sensory))}
+          </label>
+          <label class="manual-field">
+            <span>Moisture</span>
+            ${manualSelect(BRADEN_MOISTURE_OPTIONS, "patient_braden_moisture", bradenVal(patient.braden_moisture))}
+          </label>
+          <label class="manual-field">
+            <span>Activity</span>
+            ${manualSelect(BRADEN_ACTIVITY_OPTIONS, "patient_braden_activity", bradenVal(patient.braden_activity))}
+          </label>
+          <label class="manual-field">
+            <span>Mobility</span>
+            ${manualSelect(BRADEN_MOBILITY_OPTIONS, "patient_braden_mobility", bradenVal(patient.braden_mobility))}
+          </label>
+          <label class="manual-field">
+            <span>Nutrition</span>
+            ${manualSelect(BRADEN_NUTRITION_OPTIONS, "patient_braden_nutrition", bradenVal(patient.braden_nutrition))}
+          </label>
+          <label class="manual-field">
+            <span>Friction &amp; Shear</span>
+            ${manualSelect(BRADEN_FRICTION_OPTIONS, "patient_braden_friction", bradenVal(patient.braden_friction))}
           </label>
         </div>
 
