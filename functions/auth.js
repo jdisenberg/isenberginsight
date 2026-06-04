@@ -30,8 +30,15 @@ const CORS = {
 };
 
 const USER_PREFIX = "user::";
+const LOCKOUT_PREFIX = "lockout::";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 180; /* 180 days */
 const PBKDF2_ITERATIONS = 100000;
+
+/* Login brute-force protection: after this many consecutive failed logins for
+   a username, that account is locked from logging in for the cooldown window.
+   A successful login clears the counter. */
+const LOGIN_MAX_FAILS = 8;
+const LOGIN_LOCKOUT_MS = 1000 * 60 * 15; /* 15 minutes */
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -123,11 +130,23 @@ async function handleLogin(env, body) {
   const password = String(body.password || "");
   if (!username || !password) return json({ ok: false, error: "credentials_required" }, 400);
 
-  const user = await getUser(env, username);
-  if (!user) return json({ ok: false, error: "invalid_credentials" }, 401);
+  /* Brute-force lockout check */
+  const now = Date.now();
+  const lock = await getLockout(env, username);
+  if (lock && lock.locked_until && lock.locked_until > now) {
+    const retry = Math.ceil((lock.locked_until - now) / 1000);
+    return json({ ok: false, error: "too_many_attempts", retry_after_seconds: retry }, 429);
+  }
 
-  const ok = await verifyPassword(password, user.salt, user.hash);
-  if (!ok) return json({ ok: false, error: "invalid_credentials" }, 401);
+  const user = await getUser(env, username);
+  const ok = user ? await verifyPassword(password, user.salt, user.hash) : false;
+  if (!user || !ok) {
+    await recordLoginFailure(env, username, lock, now);
+    return json({ ok: false, error: "invalid_credentials" }, 401);
+  }
+
+  /* Successful login — clear any failure counter */
+  await clearLockout(env, username);
 
   /* Honor env-based admin promotion on every login */
   if (env.CICATRIX_ADMIN_USER && normalizeUsername(env.CICATRIX_ADMIN_USER) === username) {
@@ -285,6 +304,32 @@ async function getUser(env, username) {
 
 async function putUser(env, user) {
   await env.CICATRIX_AUDIT.put(USER_PREFIX + user.username, JSON.stringify(user));
+}
+
+/* ── Login lockout helpers ────────────────────────────────────────────── */
+
+async function getLockout(env, username) {
+  const raw = await env.CICATRIX_AUDIT.get(LOCKOUT_PREFIX + username);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+async function recordLoginFailure(env, username, lock, now) {
+  let fails = (lock && lock.fails) || 0;
+  fails += 1;
+  const rec = { fails, last_fail_at: now, locked_until: 0 };
+  if (fails >= LOGIN_MAX_FAILS) {
+    rec.locked_until = now + LOGIN_LOCKOUT_MS;
+    rec.fails = 0; /* reset counter; locked_until now gates further attempts */
+  }
+  /* TTL guards against orphaned records if the cooldown is never re-read */
+  await env.CICATRIX_AUDIT.put(LOCKOUT_PREFIX + username, JSON.stringify(rec), {
+    expirationTtl: Math.ceil(LOGIN_LOCKOUT_MS / 1000) + 3600,
+  });
+}
+
+async function clearLockout(env, username) {
+  await env.CICATRIX_AUDIT.delete(LOCKOUT_PREFIX + username);
 }
 
 async function shouldBeAdmin(env, username) {

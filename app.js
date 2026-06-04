@@ -758,6 +758,7 @@
     username_taken: "That username is already taken.",
     credentials_required: "Enter your username and password.",
     invalid_credentials: "Incorrect username or password.",
+    too_many_attempts: "Too many failed attempts. Please wait a few minutes and try again.",
     not_authorized: "You are not authorized to do that.",
     user_not_found: "That account no longer exists.",
     cannot_delete_self: "You cannot delete the account you are signed in with.",
@@ -916,7 +917,14 @@
       if (els.loginError) els.loginError.textContent = "Network error — check your connection and try again.";
       return;
     }
-    if (els.loginError) els.loginError.textContent = authErrorText(res.data.error);
+    if (els.loginError) {
+      if (res.data.error === "too_many_attempts" && res.data.retry_after_seconds) {
+        const mins = Math.max(1, Math.ceil(res.data.retry_after_seconds / 60));
+        els.loginError.textContent = `Too many failed attempts. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`;
+      } else {
+        els.loginError.textContent = authErrorText(res.data.error);
+      }
+    }
   }
 
   async function handleRegisterSubmit(event) {
