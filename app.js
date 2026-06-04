@@ -5970,32 +5970,64 @@
     const suggestions = [];
     const add = (code, description, note = "") => suggestions.push({ code, description, note });
 
-    /* Adds E&M codes for all care settings; officeNote = pathway-specific caveat for the office code */
-    const addEMCodes = (officeNote = "") => {
-      const officeBase = officeNote ? `${officeNote}; ` : "";
-      add("99213", "E&M — Office/outpatient, established patient, low complexity",
-          `${officeBase}use 99214 (moderate) or 99215 (high MDM); 99202–99205 for new patients`);
-      add("99214", "E&M — Office/outpatient, established patient, moderate complexity",
-          "Prescription management, review of test results, or multiple data sources increases to moderate MDM");
-      add("99232", "E&M — Hospital inpatient/observation, subsequent care, moderate complexity",
-          "For inpatient wound rounds; use 99231 (low) or 99233 (high MDM); 99221–99223 for initial hospital admission");
-      add("99309", "E&M — SNF/nursing facility, subsequent care, moderate complexity",
-          "Use 99307–99308 for lower complexity or 99310 for high MDM; 99304–99306 for initial NF admission");
-      add("99347", "E&M — Home/residence visit, established patient, low complexity",
-          "Use 99348 (moderate) or 99350 (high MDM); 99341–99345 for new home patients");
-    };
-
     const area   = Number(row.area_cm2 || 0);
     const depth  = Number(row.depth_cm  || 0);
     const eschar = Number(row.eschar_pct || 0);
     const slough = Number(row.slough_pct || 0);
     const needsDebride = c.debridementNeeded || eschar > 0 || slough >= 20;
 
-    const stageText    = c.stageText;
-    const isStage4     = stageText.includes("stage 4") || stageText.includes("stage iv");
-    const isStage3     = stageText.includes("stage 3") || stageText.includes("stage iii");
+    const stageText     = c.stageText;
+    const isStage4      = stageText.includes("stage 4") || stageText.includes("stage iv");
+    const isStage3      = stageText.includes("stage 3") || stageText.includes("stage iii");
     const isUnstageable = stageText.includes("unstageable");
-    const fullThick    = c.manualThickness === "full_thickness";
+    const fullThick     = c.manualThickness === "full_thickness";
+
+    /* E&M complexity tier derived from documented clinical signals */
+    const deepBoneExposure = Array.isArray(c.manualExposedStructures) &&
+      c.manualExposedStructures.some((s) => ["bone", "joint"].includes(s));
+
+    const emComplexity =
+      (isStage4 || deepBoneExposure || c.malignantWound || c.calciphylaxisWound ||
+       (c.osteomyelitisSignal && (c.diabeticFootRelated || c.pressureRelated || c.chronic)))
+        ? "high"
+      : (c.potentialBioburden || c.osteomyelitisSignal || c.worsening || needsDebride ||
+         c.diabeticFootRelated || c.diabeticSuboptimal4WeekProgress ||
+         c.venousSuboptimal4WeekProgress || (c.arterialRelated && c.venousRelated) || c.stalled)
+        ? "moderate"
+      : "low";
+
+    /* Emit E&M codes for all four settings at the computed complexity level */
+    const addEMCodes = (officeNote = "") => {
+      const nb = officeNote ? `${officeNote}; ` : "";
+      if (emComplexity === "high") {
+        add("99215", "E&M — Office/outpatient, established patient, high complexity",
+            `${nb}high MDM: major prescription management, extensive data review, or high-risk decisions; 99205 for new patients`);
+        add("99233", "E&M — Hospital inpatient/observation, subsequent care, high complexity",
+            "Major surgical decisions, deterioration, or sepsis management; 99223 for initial high-complexity admission");
+        add("99310", "E&M — SNF/nursing facility, subsequent care, high complexity",
+            "99306 for initial high-complexity NF admission");
+        add("99350", "E&M — Home/residence visit, established patient, high complexity",
+            "99345 for new high-complexity home patients");
+      } else if (emComplexity === "moderate") {
+        add("99214", "E&M — Office/outpatient, established patient, moderate complexity",
+            `${nb}prescription management, review of test results, or independent test interpretation; 99204 for new patients`);
+        add("99232", "E&M — Hospital inpatient/observation, subsequent care, moderate complexity",
+            "For inpatient wound rounds; use 99233 for high-complexity days; 99222 for initial moderate admission");
+        add("99309", "E&M — SNF/nursing facility, subsequent care, moderate complexity",
+            "Use 99310 for high-complexity days; 99305 for initial NF admission");
+        add("99348", "E&M — Home/residence visit, established patient, moderate complexity",
+            "Use 99350 for high MDM; 99342 for new moderate-complexity home patients");
+      } else {
+        add("99213", "E&M — Office/outpatient, established patient, low complexity",
+            `${nb}routine wound management visit; escalate to 99214 for moderate MDM; 99203 for new patients`);
+        add("99231", "E&M — Hospital inpatient/observation, subsequent care, low complexity",
+            "Stable inpatient wound check; use 99232 (moderate) or 99233 (high) as complexity increases");
+        add("99307", "E&M — SNF/nursing facility, subsequent care, straightforward",
+            "Use 99308 (low), 99309 (moderate), or 99310 (high) as clinical complexity increases");
+        add("99347", "E&M — Home/residence visit, established patient, low complexity",
+            "Use 99348 (moderate) or 99350 (high MDM); 99341 for new low-complexity home patients");
+      }
+    };
 
     /* ── NF emergency ──────────────────────────────────── */
     if (c.necrotizingFasciitis) {
@@ -7426,7 +7458,7 @@
   const TISSUE_PCT_FIELDS = ["slough_pct", "eschar_pct", "epithelialization_pct", "granulation_pct"];
 
   function manualPercent(field) {
-    return manualInput(field, "number", "%", 'step="10" min="0" max="100" inputmode="decimal"');
+    return manualInput(field, "number", "%", 'step="1" min="0" max="100" inputmode="decimal"');
   }
 
   function updateTissuePctAlert(card) {
