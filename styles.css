@@ -1383,8 +1383,11 @@ body.name-gate-active {
   inset: 0;
   z-index: 2000;
   display: grid;
-  place-items: center;
+  place-items: safe center;
   padding: 24px 16px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: rgba(42, 15, 22, 0.52);
   backdrop-filter: blur(8px);
 }
@@ -1395,8 +1398,6 @@ body.name-gate-active {
 
 .name-gate-card {
   width: min(100%, 560px);
-  max-height: calc(100vh - 48px);
-  overflow: auto;
   display: grid;
   gap: 14px;
   border: 1px solid rgba(107, 31, 42, 0.2);
