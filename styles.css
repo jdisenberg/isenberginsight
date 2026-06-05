@@ -702,13 +702,61 @@ th {
 .manual-actions {
   display: flex;
   justify-content: stretch;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .manual-actions button {
   flex: 1 1 160px;
+}
+
+/* Secondary action: "Add Another Wound" — supporting, quieter */
+#addWoundButtonBottom {
+  flex: 1 1 150px;
+  background: #fdf3ef;
+  color: var(--accent);
+  border: 1px solid rgba(107, 31, 42, 0.28);
+  box-shadow: 0 2px 0 rgba(107, 31, 42, 0.18);
+}
+
+#addWoundButtonBottom:hover {
+  background: #f7e6df;
+}
+
+#addWoundButtonBottom::before {
+  content: "+";
+  margin-right: 7px;
+  font-weight: 800;
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+/* Primary action: "Generate Considerations" — the hero CTA */
+#runBtn {
+  flex: 2 1 220px;
+  min-height: 48px;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  background: linear-gradient(135deg, #7a2433, #5a1822);
+  box-shadow: 0 3px 0 #4a1520, 0 8px 18px rgba(74, 21, 32, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -2px 0 rgba(196, 154, 24, 0.55);
+}
+
+#runBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #8b2a3b, #6b1f2a);
+}
+
+#runBtn::after {
+  content: "→";
+  margin-left: 8px;
+  font-weight: 700;
+  transition: transform 120ms ease;
+  display: inline-block;
+}
+
+#runBtn:hover:not(:disabled)::after {
+  transform: translateX(3px);
 }
 
 .manual-empty {
@@ -2381,7 +2429,8 @@ body.name-gate-active {
 }
 .az-step-dot:last-child { border-right: none; }
 .az-step-dot.az-step-done   { color: #2a5a30; background: #eef6ea; }
-.az-step-dot.az-step-active { color: var(--accent); background: #f9e8e3; font-weight: 800; }
+.az-step-dot.az-step-done::before { content: "✓ "; font-weight: 800; }
+.az-step-dot.az-step-active { color: var(--accent); background: #f9e8e3; font-weight: 800; box-shadow: inset 0 -3px 0 var(--accent); }
 .az-step-dot.az-step-clickable { cursor: pointer; }
 .az-step-dot.az-step-clickable:hover { background: #f3e0da; color: var(--accent); }
 .az-step-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
