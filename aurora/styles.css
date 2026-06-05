@@ -358,6 +358,33 @@ button.primary.sm { background: var(--brand); color: #fff; border: none; }
 .log-main { flex: 1; font-size: 0.9rem; }
 .log-value-row { display: flex; gap: 8px; } .log-value-row input { flex: 1; } .log-unit { max-width: 90px; }
 
+/* ── Comments / notes thread ───────────────────────────────────── */
+.comment-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.comment { background: #f7f8fc; border-radius: 10px; padding: 8px 11px; }
+.comment-meta { font-size: 0.78rem; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.comment-meta strong { color: var(--ink); }
+.comment-del { margin-left: auto; }
+.comment-text { white-space: pre-wrap; margin-top: 2px; }
+.comment-add { display: flex; flex-direction: column; gap: 6px; }
+.comment-add textarea { padding: 9px 11px; border: 1.5px solid var(--line); border-radius: 9px; font: inherit; resize: vertical; }
+.comment-add .primary.sm { align-self: flex-start; }
+
+/* ── Document attachments ──────────────────────────────────────── */
+.doc-host { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.doc-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; }
+.doc-icon { font-size: 1.1rem; flex: 0 0 auto; }
+.doc-name { flex: 1; color: var(--brand); font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-name:hover { text-decoration: underline; }
+
+/* ── Agenda view ───────────────────────────────────────────────── */
+.agenda-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.agenda-row { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--brand); border-radius: 10px; padding: 9px 12px; cursor: pointer; box-shadow: var(--shadow-sm); }
+.agenda-row:hover { border-color: var(--brand); }
+.agenda-row.shift { border-left-color: var(--aurora); }
+.agenda-row.overdue { border-left-color: var(--danger); background: #fdf6f5; }
+.agenda-time { flex: 0 0 64px; font-weight: 700; color: var(--brand-dark); font-size: 0.85rem; }
+.agenda-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ── Print plain text (shopping list) ──────────────────────────── */
 .print-text { display: none; }
 .print-text pre { font-family: inherit; font-size: 1rem; white-space: pre-wrap; }

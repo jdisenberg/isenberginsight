@@ -49,6 +49,7 @@ const COLLECTIONS = {
   supply: "supply::",
   shift: "shift::",
   timelog: "timelog::",
+  doc: "doc::", /* document attachments — large; kept out of the snapshot */
 };
 
 const ACT_PREFIX = "act::";

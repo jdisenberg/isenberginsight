@@ -130,6 +130,7 @@
     verify(p) { return this.call("verify", p); },
     forgot(p) { return this.call("forgot", p); },
     snapshot() { return this.call("snapshot"); },
+    list(collection) { return this.call("list", { collection }); },
     save(collection, item) { return this.call("save", { collection, item }); },
     remove(collection, id) { return this.call("delete", { collection, id }); },
     settingsSave(settings) { return this.call("settings_save", { settings }); },
@@ -225,6 +226,10 @@
         supplies: db.supplies || [], shifts: db.shifts || [], timelogs: db.timelogs || [],
         settings: db.settings, me: this._public(this._currentUser()),
       };
+    },
+    async list(collection) {
+      const db = this._db();
+      return { ok: true, items: db[collection + "s"] || [] };
     },
     async save(collection, item) {
       const db = this._db();
@@ -339,6 +344,7 @@
     session: null,            /* { username, token } */
     me: null,                 /* public user record */
     jobs: [], animals: [], supplies: [], shifts: [], timelogs: [],
+    docs: null,                /* lazy-loaded attachments cache */
     settings: null,
     activeTab: "dashboard",
   };
@@ -1104,6 +1110,7 @@
         field("Related animal", select("animalId", [{ value: "", label: "— None —" },
           ...State.animals.map((a) => ({ value: a.id, label: a.name + (a.kennel ? " (" + a.kennel + ")" : "") }))], j.animalId || "")),
       ),
+      job ? commentsSection("job", j, () => openJobForm(State.jobs.find((x) => x.id === j.id) || j)) : null,
       el("div", { class: "modal-actions" },
         job ? el("button", { type: "button", class: "link-btn danger", onclick: () => { closeModal(); removeItem("job", job.id, "Delete this job?"); } }, "Delete") : el("span"),
         el("div", {},
@@ -1130,10 +1137,18 @@
   function renderSchedule() {
     const view = $("#view-schedule");
     view.innerHTML = "";
+    State._schedView = State._schedView || "board";
     view.appendChild(sectionHeader(
       "Schedule", "Assign coverage across daytime, after-hours, and weekends.",
       "+ Add shift", () => openShiftForm()
     ));
+
+    const seg = el("div", { class: "segmented" },
+      el("button", { class: "seg" + (State._schedView === "board" ? " active" : ""), onclick: () => { State._schedView = "board"; renderSchedule(); } }, "Week board"),
+      el("button", { class: "seg" + (State._schedView === "agenda" ? " active" : ""), onclick: () => { State._schedView = "agenda"; renderSchedule(); } }, "📋 Agenda"));
+    view.appendChild(seg);
+
+    if (State._schedView === "agenda") { renderAgenda(view); return; }
 
     /* week navigation */
     State._weekStart = State._weekStart || startOfWeek(new Date());
@@ -1169,6 +1184,49 @@
       board.appendChild(col);
     });
     view.appendChild(board);
+  }
+
+  /* Agenda: next 7 days of jobs (by due date) and shifts, plus overdue. */
+  function renderAgenda(view) {
+    const actionable = State.jobs.filter((j) => !isTemplate(j) && j.status !== "done");
+    const overdue = actionable.filter(isOverdue);
+    if (overdue.length) {
+      view.appendChild(el("h3", { class: "group-title overdue", text: `⏰ Overdue (${overdue.length})` }));
+      const wrap = el("div", { class: "agenda-items" });
+      sortJobs(overdue).forEach((j) => wrap.appendChild(agendaJob(j)));
+      view.appendChild(wrap);
+    }
+
+    const start = new Date(todayISO() + "T00:00:00");
+    for (let i = 0; i < 7; i++) {
+      const day = addDays(start, i);
+      const iso = day.toISOString().slice(0, 10);
+      const dShifts = State.shifts.filter((s) => s.date === iso).sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+      const dJobs = sortJobs(actionable.filter((j) => j.dueDate === iso && !isOverdue(j)));
+      if (!dShifts.length && !dJobs.length) continue;
+      view.appendChild(el("h3", { class: "group-title", text: (i === 0 ? "Today · " : i === 1 ? "Tomorrow · " : "") + day.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }) }));
+      const wrap = el("div", { class: "agenda-items" });
+      dShifts.forEach((s) => wrap.appendChild(el("div", { class: "agenda-row shift", onclick: () => openShiftForm(s) },
+        el("span", { class: "agenda-time", text: (fmtTime(s.startTime) || "—") }),
+        el("span", { class: "agenda-main", html: `🗓 <strong>${esc(userLabel(s.assignedTo))}</strong>${s.role ? " · " + esc(s.role) : ""}` }),
+        el("span", { class: "chip period-" + (s.period || "day") + "-chip", text: s.period === "after_hours" ? "After hrs" : s.period === "weekend" ? "Weekend" : "Day" }))));
+      dJobs.forEach((j) => wrap.appendChild(agendaJob(j)));
+      view.appendChild(wrap);
+    }
+
+    if (!view.querySelector(".agenda-items")) {
+      view.appendChild(el("div", { class: "empty" }, "Nothing scheduled or due in the next 7 days."));
+    }
+  }
+  function agendaJob(j) {
+    const an = j.animalId && State.animals.find((a) => a.id === j.animalId);
+    return el("div", { class: "agenda-row" + (isOverdue(j) ? " overdue" : ""), onclick: () => openJobForm(j) },
+      el("span", { class: "agenda-time", text: j.dueTime ? fmtTime(j.dueTime) : "—" }),
+      el("span", { class: "agenda-main" },
+        el("span", { class: "dash-dot pr-" + (j.priority || "normal") }),
+        el("strong", { text: " " + (j.title || "(untitled)") }),
+        document.createTextNode((j.assignedTo ? " · " + userLabel(j.assignedTo) : " · unassigned") + (an ? " · 🐾 " + an.name : ""))),
+      el("span", { class: "chip cat-" + (j.category || "daily"), text: CATEGORY_LABELS[j.category] || "Daytime" }));
   }
 
   function openShiftForm(shift) {
@@ -1376,6 +1434,8 @@
       a.notes ? el("div", { class: "detail-block" }, el("h4", { text: "Notes" }), el("p", { text: a.notes })) : null,
       placementSection(a),
       medicalLogSection(a),
+      attachmentsSection(a),
+      commentsSection("animal", a, () => openAnimalDetail(State.animals.find((x) => x.id === a.id) || a)),
       el("div", { class: "detail-block" },
         el("h4", { text: `Jobs (${openJobs.length} open)` }),
         openJobs.length
@@ -1457,6 +1517,103 @@
 
   /* Save a patch to an animal, refresh, then re-open its detail so inline
      sub-entries (log, placement, applications) update live. */
+  /* ── Notes / comments thread (animals + jobs) ──────────────────── */
+  function commentsSection(collection, item, reopen) {
+    const comments = Array.isArray(item.comments) ? item.comments.slice() : [];
+    comments.sort((a, b) => (a.ts || "").localeCompare(b.ts || ""));
+    const block = el("div", { class: "detail-block" }, el("h4", { text: `Notes (${comments.length})` }));
+    if (comments.length) {
+      const list = el("div", { class: "comment-list" });
+      comments.forEach((c) => list.appendChild(el("div", { class: "comment" },
+        el("div", { class: "comment-meta" },
+          el("strong", { text: userLabel(c.user) }),
+          el("span", { class: "muted small", text: " · " + activityWhen(c.ts) }),
+          c.user === State.me.username || State.me.role === "admin"
+            ? el("button", { class: "link-btn danger comment-del", onclick: () => removeComment(collection, item, c.id, reopen) }, "✕") : null),
+        el("div", { class: "comment-text", text: c.text }))));
+      block.appendChild(list);
+    } else {
+      block.appendChild(el("p", { class: "muted small", text: "No notes yet." }));
+    }
+    const ta = textarea("_", "", { rows: 2, placeholder: "Add a note for the team…" });
+    const post = el("button", { class: "primary sm", onclick: async () => {
+      const text = ta.value.trim();
+      if (!text) return;
+      await addComment(collection, item, text, reopen);
+    } }, "Post note");
+    block.appendChild(el("div", { class: "comment-add" }, ta, post));
+    return block;
+  }
+  async function addComment(collection, item, text, reopen) {
+    const comments = Array.isArray(item.comments) ? item.comments.slice() : [];
+    comments.push({ id: uid(), user: State.me.username, ts: new Date().toISOString(), text });
+    const res = await Store.save(collection, { ...item, comments });
+    if (!res.ok) { toast("Could not post note", "err"); return; }
+    await refresh();
+    reopen(res.item || { ...item, comments });
+  }
+  async function removeComment(collection, item, id, reopen) {
+    const comments = (item.comments || []).filter((x) => x.id !== id);
+    const res = await Store.save(collection, { ...item, comments });
+    if (res.ok) { await refresh(); reopen(res.item || { ...item, comments }); }
+  }
+
+  /* ── Document attachments (separate "doc" collection, lazy-loaded) ── */
+  const MAX_DOC_BYTES = 4 * 1024 * 1024; /* ~4 MB per file */
+  async function loadDocs(force) {
+    if (State.docs && !force) return State.docs;
+    const res = await Store.list("doc");
+    State.docs = (res && res.ok) ? (res.items || []) : [];
+    return State.docs;
+  }
+  function attachmentsSection(a) {
+    const block = el("div", { class: "detail-block" }, el("h4", { text: "Files & documents" }));
+    const host = el("div", { class: "doc-host" }, el("p", { class: "muted small", text: "Loading…" }));
+    block.appendChild(host);
+    const fileInput = el("input", { type: "file", accept: "image/*,application/pdf,.pdf,.doc,.docx,.txt" });
+    fileInput.addEventListener("change", () => uploadDoc(a, fileInput));
+    block.appendChild(el("label", { class: "photo-pick" }, fileInput, el("span", { class: "photo-pick-btn", text: "📎 Attach a file" })));
+    loadDocs().then(() => renderDocList(host, a));
+    return block;
+  }
+  function renderDocList(host, a) {
+    const docs = (State.docs || []).filter((d) => d.animalId === a.id)
+      .sort((x, y) => (y.ts || "").localeCompare(x.ts || ""));
+    host.innerHTML = "";
+    if (!docs.length) { host.appendChild(el("p", { class: "muted small", text: "No files attached." })); return; }
+    docs.forEach((d) => host.appendChild(el("div", { class: "doc-row" },
+      el("span", { class: "doc-icon", text: /image\//.test(d.type) ? "🖼" : /pdf/.test(d.type) ? "📄" : "📎" }),
+      el("a", { class: "doc-name", href: d.dataUrl, download: d.name, target: "_blank" }, d.name || "file"),
+      el("span", { class: "muted small", text: prettySize(d.size) }),
+      el("button", { class: "link-btn danger", onclick: () => removeDoc(a, d.id) }, "✕"))));
+  }
+  function prettySize(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+  function uploadDoc(a, fileInput) {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    if (f.size > MAX_DOC_BYTES) { toast("File too large (max 4 MB)", "err"); return; }
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const doc = { animalId: a.id, name: f.name, type: f.type || "", size: f.size, dataUrl: String(e.target.result || "") };
+      const res = await Store.save("doc", doc);
+      if (!res.ok) { toast("Could not attach", "err"); return; }
+      await loadDocs(true);
+      toast("File attached");
+      openAnimalDetail(State.animals.find((x) => x.id === a.id) || a);
+    };
+    reader.onerror = () => toast("Could not read file", "err");
+    reader.readAsDataURL(f);
+  }
+  async function removeDoc(a, id) {
+    const res = await Store.remove("doc", id);
+    if (res.ok) { await loadDocs(true); toast("File removed"); openAnimalDetail(State.animals.find((x) => x.id === a.id) || a); }
+  }
+
   async function patchAnimal(a, patch, reopen = true) {
     const res = await Store.save("animal", { ...a, ...patch });
     if (!res.ok) { toast("Could not save", "err"); return null; }
@@ -1754,6 +1911,7 @@
         a.feeding ? el("div", { class: "kc-block" }, el("strong", { text: "Feeding: " }), document.createTextNode(a.feeding)) : null,
         a.medical ? el("div", { class: "kc-block" }, el("strong", { text: "Medical: " }), document.createTextNode(a.medical)) : null,
         a.notes ? el("div", { class: "kc-block" }, el("strong", { text: "Notes: " }), document.createTextNode(a.notes)) : null,
+        (a.comments && a.comments.length) ? el("div", { class: "kc-block" }, el("strong", { text: "Latest note: " }), document.createTextNode(a.comments[a.comments.length - 1].text)) : null,
         el("div", { class: "kc-foot", text: `${orgName} · printed ${new Date().toLocaleDateString()}` }),
       ));
     });
