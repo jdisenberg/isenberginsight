@@ -256,6 +256,7 @@
     { value: "warmth", label: "Warmth" },
     { value: "edema", label: "Edema" },
     { value: "increased_pain", label: "Increased pain" },
+    { value: "disproportionate_pain", label: "Disproportionate pain (out of proportion to appearance)" },
     { value: "purulent_drainage", label: "Purulent drainage" },
     { value: "malodor", label: "Malodor" },
     { value: "friable_tissue", label: "Friable tissue" },
@@ -892,7 +893,8 @@
     if (textHasAny(text, ["erythema", "redness", "cellulitis"])) out.push("erythema");
     if (textHasAny(text, ["warmth", "warm"])) out.push("warmth");
     if (textHasAny(text, ["edema", "oedema", "swelling"])) out.push("edema");
-    if (textHasAny(text, ["increased pain", "worsening pain"])) out.push("increased_pain");
+    if (textHasAny(text, ["increased pain", "worsening pain", "pain worse", "pain worsening"])) out.push("increased_pain");
+    if (textHasAny(text, ["disproportionate pain", "out of proportion", "pain out of proportion", "pop pain", "severe pain", "excruciating"])) out.push("disproportionate_pain");
     if (textHasAny(text, ["purulent", "pus"])) out.push("purulent_drainage");
     if (textHasAny(text, ["malodor", "malodour", "foul odor", "foul odour", "fetid"])) out.push("malodor");
     if (textHasAny(text, ["friable"])) out.push("friable_tissue");
@@ -943,6 +945,12 @@
       "dry heel eschar",
     ]);
 
+    const allPainText = normalizeText(`${latest?.pain_text || ""} ${latest?.infection_signs_text || ""} ${reportText}`);
+    const disproportionatePainSignal = textHasAny(allPainText, [
+      "disproportionate pain", "out of proportion", "pain out of proportion",
+      "pop pain", "severe pain", "excruciating",
+    ]);
+
     return {
       reportText,
       inferredExudateAmount,
@@ -953,6 +961,7 @@
       cavitySignal,
       necroticSignal,
       stableDryHeelEscharSignal,
+      disproportionatePainSignal,
     };
   }
 
@@ -3910,6 +3919,8 @@
       reportExposedStructures: reportSignals.inferredExposedStructures,
       reportCavitySignal: reportSignals.cavitySignal,
       reportNecroticSignal: reportSignals.necroticSignal,
+      disproportionatePainSignal: reportSignals.disproportionatePainSignal ||
+        (Array.isArray(effectiveInfectionSigns) && effectiveInfectionSigns.includes("disproportionate_pain")),
       effectiveExudateAmount,
       effectiveExudateType,
       effectiveOdor,
@@ -4544,6 +4555,18 @@
     if (context.pyodermaGangrenosum) {
       add("high", "PYODERMA GANGRENOSUM SIGNAL DETECTED: DO NOT DEBRIDE. Pathergy risk — sharp debridement or surgical trauma will cause rapid wound worsening. Management requires immunosuppressive therapy (corticosteroids, cyclosporine, biologics). Dermatology/rheumatology consult required urgently.");
       return sortByPriority(out);
+    }
+
+    if (context.disproportionatePainSignal) {
+      if (!context.necrotizingFasciitis) {
+        add("high", "⚠ DISPROPORTIONATE PAIN signal — pain out of proportion to wound appearance is a red flag for necrotizing fasciitis, critical limb ischemia, or deep compartment infection. Urgent bedside evaluation required before any wound manipulation.");
+      }
+      if (context.arterialRelated || context.perfusionDebridementRisk) {
+        add("high", "Disproportionate pain with arterial/ischemic wound — evaluate for critical limb ischemia urgently; do not debride until perfusion is confirmed.");
+      }
+      if (context.diabeticFootRelated) {
+        add("high", "Disproportionate pain with diabetic foot ulcer — evaluate for deep space infection, necrotizing fasciitis, or osteomyelitis; early surgical and infectious disease consultation.");
+      }
     }
 
     const gate = evaluateDebridementSafetyGate(context);
@@ -8426,6 +8449,19 @@
     }
     if (pf.severeHypoalbuminemia) {
       add("Registered Dietitian / Nutrition Support", `Severe hypoalbuminemia (albumin ${p.albumin} g/dL) — urgent nutrition support consult; target protein ≥ 1.5 g/kg/day and consider high-protein supplementation or enteral support.`, "routine", "Albumin < 3.0 g/dL predicts poor wound healing and increased infection risk. Aggressive nutritional repletion is required alongside wound management.");
+    }
+
+    /* Disproportionate pain */
+    if (c.disproportionatePainSignal) {
+      if (!c.necrotizingFasciitis) {
+        add("Surgery / Emergency Medicine", "Disproportionate pain — pain out of proportion to wound appearance warrants urgent evaluation to rule out necrotizing fasciitis or compartment syndrome.", "urgent", "NF carries >30% mortality if delayed. Signs: pain out of proportion, crepitus, rapidly spreading erythema, systemic toxicity. This is a clinical emergency if confirmed.");
+      }
+      if (c.arterialRelated || c.perfusionDebridementRisk) {
+        add("Vascular Surgery", "Disproportionate pain in arterial/ischemic wound — urgent vascular evaluation for critical limb ischemia.", "urgent", "Rest pain or pain out of proportion in an ischemic wound may signal critical ischemia requiring emergent revascularization.");
+      }
+      if (c.diabeticFootRelated) {
+        add("Podiatry / Infectious Disease", "Disproportionate pain with diabetic foot ulcer — urgent evaluation for deep space infection, necrotizing fasciitis, or acute Charcot foot.", "urgent", "Diabetic patients may have partially blunted pain but disproportionate pain still indicates serious pathology. Acute Charcot presents with warmth, erythema, and pain; NF and deep infection must be excluded.");
+      }
     }
 
     /* Perfusion — TcPO₂ / Toe pressure */
