@@ -1228,17 +1228,16 @@
       return { ix: cx / imgScale, iy: cy / imgScale };
     }
 
-    /* ── Loupe magnifier (step 2) ── */
+    /* ── Loupe magnifier ── */
     function showLoupe(clientX, clientY) {
       const lc = loupeCvs(); const mc = cvs();
       if (!lc || !mc || !photo) return;
-      const wrap = $("azCanvasWrap");
-      const wrapRect = wrap ? wrap.getBoundingClientRect() : mc.getBoundingClientRect();
-      const lCss = 140;                               /* loupe display size px */
-      let lx = clientX - wrapRect.left - lCss / 2;
-      let ly = clientY - wrapRect.top  - lCss - 28;  /* default: above finger */
-      lx = Math.max(4, Math.min(wrapRect.width - lCss - 4, lx));
-      if (ly < 4) ly = clientY - wrapRect.top + 28;  /* flip below if too high */
+      const lCss = 140;
+      let lx = clientX - lCss / 2;
+      let ly = clientY - lCss - 28;             /* default: above finger */
+      if (ly < 8) ly = clientY + 28;            /* flip below if near top */
+      /* clamp to viewport */
+      lx = Math.max(8, Math.min(window.innerWidth  - lCss - 8, lx));
       lc.style.left = `${lx}px`;
       lc.style.top  = `${ly}px`;
       lc.hidden = false;
@@ -1305,7 +1304,7 @@
 
     function updateLoupeBtn() {
       const btn = $("analyzerZoomBtn"); if (!btn) return;
-      btn.textContent = loupeEnabled ? "Loupe: On" : "Loupe: Off";
+      btn.textContent = loupeEnabled ? "Magnifier: On" : "Magnifier: Off";
       btn.classList.toggle("az-btn-active", loupeEnabled);
     }
 
@@ -1689,11 +1688,13 @@
         window.addEventListener("mouseup", onDrawEnd);
         /* touch: step 2 shows loupe on move, places on end; step 3 draws */
         c.addEventListener("touchstart", (e) => {
-          if (step === 2) { e.preventDefault(); showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
+          e.preventDefault();
+          if (step === 2) { showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
           else { if (loupeEnabled && step === 3 && e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); onDrawStart(e); }
         }, { passive: false });
         c.addEventListener("touchmove", (e) => {
-          if (step === 2) { e.preventDefault(); if (e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
+          e.preventDefault();
+          if (step === 2) { if (e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
           else { if (loupeEnabled && step === 3 && e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); onDrawMove(e); }
         }, { passive: false });
         c.addEventListener("touchend", (e) => {

@@ -2494,14 +2494,14 @@ body.name-gate-active {
   border-color: var(--accent);
 }
 
-/* Loupe magnifier (step 2 ruler) */
+/* Loupe magnifier */
 .az-loupe {
-  position: absolute;
+  position: fixed;
   width: 140px;
   height: 140px;
   border-radius: 50%;
   pointer-events: none;
-  z-index: 20;
+  z-index: 9999;
   box-shadow: 0 4px 20px rgba(0,0,0,0.45), 0 0 0 2px rgba(0,229,255,0.3);
 }
 
