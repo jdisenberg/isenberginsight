@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='18' fill='%231f6f5c'/%3E%3Cpath d='M40 18c10 8 18 16 18 26a18 18 0 0 1-36 0c0-10 8-18 18-26z' fill='%23eaf7f2'/%3E%3Ccircle cx='32' cy='40' r='3.4' fill='%231f6f5c'/%3E%3Ccircle cx='48' cy='40' r='3.4' fill='%231f6f5c'/%3E%3C/svg%3E" />
+    <title>Aurora Sanctuary</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ── Auth gate ─────────────────────────────────────────────────── -->
+    <section id="authOverlay" class="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class="auth-card">
+        <div class="auth-top">
+          <svg class="auth-mark" viewBox="0 0 80 80" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <rect width="80" height="80" rx="18" fill="#1f6f5c"/>
+            <path d="M40 18c10 8 18 16 18 26a18 18 0 0 1-36 0c0-10 8-18 18-26z" fill="#eaf7f2"/>
+            <circle cx="32" cy="40" r="3.4" fill="#1f6f5c"/>
+            <circle cx="48" cy="40" r="3.4" fill="#1f6f5c"/>
+          </svg>
+          <div>
+            <span class="auth-kicker">Aurora Sanctuary</span>
+            <h2 id="authTitle">Sign In</h2>
+          </div>
+        </div>
+
+        <!-- Login -->
+        <form id="loginForm" class="auth-view" data-auth-view="login" autocomplete="on" novalidate>
+          <p class="auth-copy">Sign in to see your jobs and the sanctuary dashboard.</p>
+          <label class="auth-field" for="loginUsername"><span>Username</span>
+            <input id="loginUsername" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+          </label>
+          <label class="auth-field" for="loginPassword"><span>Password</span>
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <p id="loginError" class="auth-error" aria-live="polite"></p>
+          <button type="submit">Sign In</button>
+          <p class="auth-links">
+            <a href="#register" data-auth-nav="register">Create account</a>
+            <span class="auth-sep" aria-hidden="true">·</span>
+            <a href="#forgot" data-auth-nav="forgot">Forgot password?</a>
+          </p>
+        </form>
+
+        <!-- Register -->
+        <form id="registerForm" class="auth-view hidden" data-auth-view="register" autocomplete="on" novalidate>
+          <p class="auth-copy">Create your staff account.</p>
+          <label class="auth-field" for="registerName"><span>Full name</span>
+            <input id="registerName" name="name" type="text" autocomplete="name" required />
+          </label>
+          <label class="auth-field" for="registerUsername"><span>Username</span>
+            <input id="registerUsername" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" required />
+          </label>
+          <label class="auth-field" for="registerEmail"><span>Email <span class="auth-optional">(optional)</span></span>
+            <input id="registerEmail" name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" />
+          </label>
+          <label class="auth-field" for="registerPhone"><span>Phone <span class="auth-optional">(optional)</span></span>
+            <input id="registerPhone" name="phone" type="tel" autocomplete="tel" />
+          </label>
+          <label class="auth-field" for="registerPassword"><span>Password <span class="auth-optional">(8+ characters)</span></span>
+            <input id="registerPassword" name="new-password" type="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          <p id="registerError" class="auth-error" aria-live="polite"></p>
+          <button type="submit">Create Account</button>
+          <p class="auth-links"><a href="#login" data-auth-nav="login">← Back to sign in</a></p>
+        </form>
+
+        <!-- Forgot -->
+        <form id="forgotForm" class="auth-view hidden" data-auth-view="forgot" novalidate>
+          <p class="auth-copy">Enter your username. An administrator will be notified to reset your password.</p>
+          <label class="auth-field" for="forgotUsername"><span>Username</span>
+            <input id="forgotUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+          </label>
+          <p id="forgotError" class="auth-error" aria-live="polite"></p>
+          <p id="forgotSuccess" class="auth-success" aria-live="polite"></p>
+          <button type="submit">Request Reset</button>
+          <p class="auth-links"><a href="#login" data-auth-nav="login">← Back to sign in</a></p>
+        </form>
+
+        <p id="modeBanner" class="auth-mode" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- ── App shell ─────────────────────────────────────────────────── -->
+    <div id="app" class="app hidden">
+      <header class="topbar">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 80 80" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <rect width="80" height="80" rx="18" fill="#1f6f5c"/>
+            <path d="M40 18c10 8 18 16 18 26a18 18 0 0 1-36 0c0-10 8-18 18-26z" fill="#eaf7f2"/>
+            <circle cx="32" cy="40" r="3.4" fill="#1f6f5c"/>
+            <circle cx="48" cy="40" r="3.4" fill="#1f6f5c"/>
+          </svg>
+          <div>
+            <h1 id="orgNameHeading">Aurora Sanctuary</h1>
+            <p class="brand-sub">Schedule &amp; animal care</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <span id="syncBadge" class="sync-badge" title="Data source"></span>
+          <div class="user-chip">
+            <span id="userChipName"></span>
+            <button id="logoutBtn" type="button" class="link-btn">Sign out</button>
+          </div>
+        </div>
+      </header>
+
+      <nav class="tabs" id="tabBar">
+        <button class="tab active" data-tab="todo">My Todo</button>
+        <button class="tab" data-tab="jobs">Jobs</button>
+        <button class="tab" data-tab="schedule">Schedule</button>
+        <button class="tab" data-tab="animals">Animals</button>
+        <button class="tab" data-tab="supplies">Supplies</button>
+        <button class="tab admin-only" data-tab="admin">Admin</button>
+      </nav>
+
+      <main id="views">
+        <section id="view-todo" class="view active"></section>
+        <section id="view-jobs" class="view"></section>
+        <section id="view-schedule" class="view"></section>
+        <section id="view-animals" class="view"></section>
+        <section id="view-supplies" class="view"></section>
+        <section id="view-admin" class="view"></section>
+      </main>
+
+      <p class="footer-note">Aurora Sanctuary — internal staff tool. <span id="footerMode"></span></p>
+    </div>
+
+    <!-- ── Generic modal ─────────────────────────────────────────────── -->
+    <div id="modalRoot" class="modal-root hidden" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 id="modalTitle">Edit</h3>
+          <button id="modalClose" type="button" class="link-btn" aria-label="Close">✕</button>
+        </div>
+        <div id="modalBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- ── Kennel-card print surface (rendered then window.print) ────── -->
+    <div id="printSurface" class="print-surface" aria-hidden="true"></div>
+
+    <div id="toast" class="toast hidden" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
