@@ -2649,62 +2649,6 @@ body.name-gate-active {
 .copy-all-btn:hover { background: var(--accent); color: #fff; }
 .copy-all-btn:active { opacity: 0.85; }
 
-/* ── Dressing Recommendation Block ─────────────────────────────────────── */
-.dr-section {
-  margin-top: 10px;
-  border: 1.5px solid #a8d0c4;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #f7fbf9;
-}
-.dr-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
-  cursor: pointer;
-  background: #d8eeea;
-  list-style: none;
-  user-select: none;
-}
-.dr-toggle::-webkit-details-marker { display: none; }
-.dr-toggle::after {
-  content: "›";
-  margin-left: auto;
-  font-size: 1.1rem;
-  color: #2a6055;
-  transition: transform 0.2s;
-  flex-shrink: 0;
-}
-.dr-section[open] > .dr-toggle::after { transform: rotate(90deg); }
-.dr-label { font-weight: 700; font-size: 0.92rem; color: #1b3a34; flex-shrink: 0; }
-.dr-meta { font-size: 0.78rem; color: #3a6a62; flex: 1; }
-.dr-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
-.dr-layer {
-  border: 1px solid #c2e0da;
-  border-radius: 8px;
-  background: #fff;
-  padding: 10px 12px;
-}
-.dr-layer-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 3px;
-}
-.dr-role { font-weight: 700; font-size: 0.87rem; color: #1b3a34; }
-.dr-freq { font-size: 0.78rem; color: #3a6a62; font-style: italic; }
-.dr-product { font-size: 0.88rem; color: #1a2e29; font-weight: 600; margin-bottom: 4px; }
-.dr-rationale { font-size: 0.81rem; color: var(--ink); line-height: 1.5; margin: 0 0 4px; }
-.dr-hcpcs { font-size: 0.77rem; color: #4a6a62; }
-.dr-mustdoc-wrap { margin-top: 4px; }
-.dr-mustdoc-head { font-size: 0.82rem; color: #1b3a34; }
-.dr-mustdoc { margin: 4px 0 0 16px; padding: 0; font-size: 0.81rem; color: var(--ink); line-height: 1.6; }
-.dr-mustdoc li { margin-bottom: 2px; }
-.dr-disclaimer { font-size: 0.74rem; color: var(--ink-soft); font-style: italic; margin: 0; line-height: 1.5; }
-
 /* ── Referral Triggers Block ─────────────────────────────────────────────── */
 .ref-section {
   margin-top: 10px;

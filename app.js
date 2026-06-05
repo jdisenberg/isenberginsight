@@ -8301,124 +8301,6 @@
       </details>`;
   }
 
-  /* ── Dressing Recommendation Engine ───────────────────────────────────── */
-  function buildDressingRecommendation(row) {
-    const c = buildContext(row, null, row.manual_overrides || null);
-    if (c.isResolved || c.looksClosed) return null;
-    if (c.pyodermaGangrenosum || c.calciphylaxisWound || c.malignantWound || c.necrotizingFasciitis) return null;
-
-    const woundLabel = [row.wound_type, row.location].filter(Boolean).join(" — ");
-    const layers = [];
-    const mustDoc = [];
-    const add = (role, product, rationale, hcpcs = "", frequency = "") =>
-      layers.push({ role, product, rationale, hcpcs, frequency });
-
-    const heavyExudate = ["large", "copious", "heavy"].some((v) => (c.effectiveExudateAmount || "").includes(v));
-    const modExudate = c.effectiveExudateAmount === "moderate" || c.exudateProxy;
-    const lowExudate = !heavyExudate && !modExudate;
-    const infected = c.potentialBioburden || (c.effectiveInfectionSigns && c.effectiveInfectionSigns.length > 0);
-    const cavityOrTunnel = c.cavityLikely || c.hasTunneling || c.hasUndermining;
-    const debridementNeeded = c.debridementNeeded && !c.heelStableEscharException;
-
-    /* Wound cleansing */
-    add("Wound Cleansing", "Normal saline or pH-balanced wound cleanser (spray or irrigation at 4–15 psi)", "Remove loosely adherent debris and exudate before each assessment. Pressurized irrigation preferred for wounds with moderate debris.", "A6216", "Each dressing change");
-
-    /* Primary contact layer */
-    if (debridementNeeded && c.eschar > 0 && !c.venousRelated && !c.arterialRelated) {
-      add("Primary — Autolytic/Enzymatic Debridement", "Amorphous hydrogel (e.g., Medihoney) or cadexomer iodine gel; moisture-retentive secondary dressing", "Hydrogel rehydrates and softens necrotic tissue for autolytic debridement. Cadexomer iodine adds antimicrobial activity. Do not use on ischemic wounds.", "A6248 (hydrogel ≤ 1 oz) / A6251–A6256", infected ? "Daily to every 2 days" : "Every 2–3 days");
-    } else if (infected) {
-      const am = c.diabeticFootRelated
-        ? "Silver-impregnated foam (e.g., Mepilex Ag) or DACC-coated dressing (e.g., Sorbact)"
-        : "Silver-containing foam or hydrofiber (e.g., Aquacel Ag, Biatain Ag)";
-      add("Primary — Antimicrobial", am, "Antimicrobial dressings reduce bacterial load and biofilm. Limit silver to 2–4 weeks then reassess. DACC dressings bind bacteria by hydrophobic interaction without active ingredients.", "A6210–A6215 (foam) / A6196–A6199 (alginate/hydrofiber)", heavyExudate ? "Every 1–2 days" : "Every 2–3 days");
-    } else if (c.venousRelated) {
-      add("Primary — Venous (under compression)", heavyExudate ? "Hydrofiber or alginate sheet (e.g., Aquacel Extra, Kaltostat) under compression" : "Non-adherent foam or silicone contact layer (e.g., Mepitel One, Biatain) under compression", "Venous ulcers require an absorbent or atraumatic primary layer beneath compression. Hydrofiber handles high drainage and forms a gel interface gentle at removal.", heavyExudate ? "A6196–A6199" : "A6210–A6213", "Every 3–7 days under compression bandage");
-      mustDoc.push("Compression system type, layer count, and ankle-heel application technique");
-    } else if (c.cleanBed && c.granulating && !cavityOrTunnel) {
-      add("Primary — Non-Adherent (granulating bed)", lowExudate ? "Silicone non-adherent mesh (e.g., Mepitel One, Adaptic Touch) or petrolatum gauze" : "Soft silicone foam (e.g., Mepilex, Biatain Silicone)", "A clean granulating wound bed requires gentle, non-traumatic coverage. Silicone interfaces minimize pain and disruption at dressing changes.", lowExudate ? "A6216" : "A6210–A6213", lowExudate ? "Every 3–5 days" : "Every 2–4 days");
-    } else if (lowExudate && !debridementNeeded) {
-      add("Primary — Moisture Retention", c.pressureRelated ? "Thin foam dressing (e.g., Mepilex Lite) or silicone-backed hydrocolloid" : "Hydrocolloid thin or transparent film dressing", "Low-exudate wounds risk desiccation. Moisture-retentive dressings maintain the moist environment required for optimal epithelialization.", "A6234–A6241 (hydrocolloid) / A6257–A6259 (transparent film)", "Every 3–5 days or when border lifts");
-    } else {
-      add("Primary — Absorptive Foam", heavyExudate ? "Super-absorbent polymer pad (e.g., Eclypse, DryMax) or alginate sheet" : "Foam dressing (e.g., Mepilex Border, Biatain) with or without adhesive border", "Moderate-to-high exudate requires an absorbent primary layer to prevent periwound maceration.", "A6209–A6215", heavyExudate ? "Daily to every 2 days" : "Every 2–4 days");
-    }
-
-    /* Cavity / tunnel filler */
-    if (cavityOrTunnel) {
-      const filler = infected
-        ? "Iodoform gauze or alginate rope (e.g., Kaltostat Rope) — limit iodoform to 2–4 weeks"
-        : "Alginate rope or hydrofiber rope (e.g., Aquacel ribbon); loose packing only";
-      add("Cavity / Tunnel Filler", filler, "Dead space requires loose packing to maintain drainage, prevent premature surface closure, and reduce anaerobic microenvironment. Leave trailing end visible outside wound for safe removal.", "A6261–A6262 (filler) / A6196–A6199 (alginate rope)", infected ? "Every 1–2 days" : "Every 2–3 days");
-      mustDoc.push("Tunneling/undermining: depth (cm) and clock position documented at each visit");
-    }
-
-    /* Secondary absorbent */
-    if (!c.venousRelated && (heavyExudate || modExudate || cavityOrTunnel)) {
-      add("Secondary Absorbent", heavyExudate ? "Super-absorbent secondary pad (e.g., Eclypse, DryMax Extra) or ABD pad" : "4×4 gauze with ABD pad or foam secondary", "Secondary layer manages exudate strike-through and protects clothing/bedding. Super-absorbent pads reduce change frequency.", "A6234 / super-absorbent A6028", heavyExudate ? "Daily to every 2 days" : "Match primary layer");
-    }
-
-    /* NPWT consideration for deep cavities */
-    if (cavityOrTunnel && (c.tunnelingDepthCm >= 2 || c.depth >= 1.5) && !c.arterialRelated) {
-      add("Consider: Negative Pressure Wound Therapy (NPWT)", "NPWT (e.g., V.A.C. / PICO) — for deep cavities or tunnels not responding to conventional dressings", "NPWT promotes granulation, reduces edema, and manages high exudate in deep cavity wounds. RCT evidence supports use in Stage 3/4 PI, surgical dehiscence, and diabetic foot wounds with significant depth.", "97605–97607 (NPWT ≤50 / >50 sq cm / disposable)", "Per device protocol — typically every 48–72 h");
-      mustDoc.push("Contraindications screened (unexplored fistula, malignancy, exposed vessels/organs, inadequate perfusion)");
-    }
-
-    /* Periwound protection */
-    if (c.periWoundMacerated || c.periWoundErythematous || heavyExudate) {
-      add("Periwound Skin Protection", c.periWoundMacerated
-        ? "Zinc oxide barrier cream or cyanoacrylate liquid film (e.g., Cavilon No Sting) to macerated periwound skin"
-        : "Liquid skin barrier film (e.g., Cavilon, 3M Barrier Film) to periwound skin before adhesive dressings",
-        c.periWoundMacerated ? "Macerated periwound skin is fragile and risks wound extension. Zinc oxide acts as an occlusive moisture barrier; cyanoacrylate film bonds to skin to prevent further maceration." : "High exudate or periwound erythema increases maceration and adhesive trauma risk. Liquid barrier film protects the wound margin.",
-        "A6250 (skin sealant / barrier film)", "Each dressing change");
-    }
-
-    /* Compression (venous / mixed) */
-    if (c.venousRelated && !c.abiInadequateForCompression) {
-      const comp = c.abiMildImpairment
-        ? "Modified compression (15–25 mmHg) — reduced due to mildly impaired ABI; confirm with vascular before applying"
-        : "Full multilayer compression (30–40 mmHg at ankle) — e.g., 4-layer bandage or compression stocking";
-      add("Compression Therapy", comp, "Compression is the cornerstone of venous ulcer healing. RCTs consistently show faster healing and reduced recurrence with sustained ≥ 30 mmHg compression. Multilayer systems and high-compression stockings are equivalent when applied correctly.", "A6531–A6545 (stocking) / A6549 (compression bandage)", "Change every 5–7 days under compression unless soiled");
-      mustDoc.push("ABI documented before compression; system type, layer count, and ankle technique described");
-    } else if (c.abiInadequateForCompression && c.venousRelated) {
-      add("Compression — CONTRAINDICATED", "DO NOT apply standard compression — ABI inadequate. Use non-compressive moisture management dressings only until vascular evaluation is complete.", "Compression with ABI < 0.6 can cause limb-threatening ischemia. Mixed arterial-venous wounds require vascular surgery input before any compression is applied.", "", "");
-      mustDoc.push("ABI documented; vascular surgery referral placed or documented as declined");
-    }
-
-    mustDoc.push("Wound dimensions (L × W × D cm) and tissue composition (% granulation/slough/eschar/epithelialization) at each visit");
-    mustDoc.push("Exudate: amount (none/scant/moderate/large) and character (serous, serosanguineous, purulent)");
-    if (infected) mustDoc.push("Culture results documented; antibiotic rationale if prescribed");
-
-    return { woundLabel, layers, mustDoc, disclaimer: "Dressing suggestions are decision support based on entered data. Verify at bedside; prescriber discretion applies." };
-  }
-
-  function renderDressingRecommendationHtml(dr) {
-    if (!dr || !dr.layers || !dr.layers.length) return "";
-    const layersHtml = dr.layers.map((l) => `
-      <div class="dr-layer">
-        <div class="dr-layer-head">
-          <span class="dr-role">${escapeHtml(l.role)}</span>
-          ${l.frequency ? `<span class="dr-freq">${escapeHtml(l.frequency)}</span>` : ""}
-        </div>
-        <div class="dr-product">${escapeHtml(l.product)}</div>
-        <p class="dr-rationale">${escapeHtml(l.rationale)}</p>
-        ${l.hcpcs ? `<div class="dr-hcpcs">HCPCS: ${escapeHtml(l.hcpcs)}</div>` : ""}
-      </div>`).join("");
-    const mustDocHtml = dr.mustDoc.length
-      ? `<div class="dr-mustdoc-wrap"><strong class="dr-mustdoc-head">Required documentation:</strong><ul class="dr-mustdoc">${dr.mustDoc.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ul></div>`
-      : "";
-    return `
-      <details class="dr-section">
-        <summary class="dr-toggle">
-          <span class="dr-label">Dressing Recommendation</span>
-          <span class="dr-meta">${dr.layers.length} layer${dr.layers.length === 1 ? "" : "s"}</span>
-        </summary>
-        <div class="dr-body">
-          ${layersHtml}
-          ${mustDocHtml}
-          <p class="dr-disclaimer">${escapeHtml(dr.disclaimer)}</p>
-        </div>
-      </details>`;
-  }
-
   /* ── Plain-text export for Copy All Notes ──────────────────────────────── */
   function buildPlainTextExport(rows) {
     if (!rows || !rows.length) return "";
@@ -8530,11 +8412,6 @@
         .filter(Boolean)
         .join("");
 
-      const dressingBlocks = patient.wounds
-        .map((row) => renderDressingRecommendationHtml(buildDressingRecommendation(row)))
-        .filter(Boolean)
-        .join("");
-
       const referralBlocks = patient.wounds
         .map((row) => renderReferralTriggersHtml(buildReferralTriggers(row)))
         .filter(Boolean)
@@ -8548,7 +8425,6 @@
           </div>
           <p class="narrative-summary">${escapeHtml(fullNarrative)}</p>
           ${scoreBlocks}
-          ${dressingBlocks}
           ${referralBlocks}
           ${icd10Blocks || ""}
         </section>
