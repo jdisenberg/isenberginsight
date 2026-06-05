@@ -7,12 +7,15 @@
  *     instantly from cache, refreshed in the background. This makes the app
  *     load fast and keep working on flaky shelter wifi.
  */
-const CACHE = "aurora-shell-v1";
+const CACHE = "aurora-shell-v2";
 const SHELL = [
   ".",
   "index.html",
   "app.js",
   "styles.css",
+  "vendor-qrcode.js",
+  "adopt.html",
+  "public.js",
   "manifest.webmanifest",
   "assets/logo.png",
   "icons/icon-192.png",

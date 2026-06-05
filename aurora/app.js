@@ -134,6 +134,7 @@
     remove(collection, id) { return this.call("delete", { collection, id }); },
     settingsSave(settings) { return this.call("settings_save", { settings }); },
     staffList() { return this.call("staff_list"); },
+    activityList() { return this.call("activity_list"); },
     adminList() { return this.call("admin_list"); },
     adminUpdate(p) { return this.call("admin_update", p); },
     adminReset(p) { return this.call("admin_reset", p); },
@@ -152,7 +153,7 @@
     _saveUsers(u) { localStorage.setItem(LS.localUsers, JSON.stringify(u)); },
     _defaults() {
       return {
-        jobs: [], animals: [], supplies: [], shifts: [],
+        jobs: [], animals: [], supplies: [], shifts: [], timelogs: [],
         settings: {
           orgName: "Aurora Sanctuary",
           kennels: [],
@@ -160,6 +161,17 @@
           jobCategories: ["Feeding", "Cleaning", "Medical", "Enrichment", "Laundry", "Intake", "Other"],
         },
       };
+    },
+    _logActivity(text) {
+      try {
+        const arr = JSON.parse(localStorage.getItem("aurora.local.activity") || "[]");
+        arr.unshift({ ts: new Date().toISOString(), user: State.session ? State.session.username : "", text });
+        localStorage.setItem("aurora.local.activity", JSON.stringify(arr.slice(0, 300)));
+      } catch { /* ignore */ }
+    },
+    async activityList() {
+      try { return { ok: true, activity: JSON.parse(localStorage.getItem("aurora.local.activity") || "[]") }; }
+      catch { return { ok: true, activity: [] }; }
     },
 
     async register(p) {
@@ -210,12 +222,13 @@
       return {
         ok: true,
         jobs: db.jobs || [], animals: db.animals || [],
-        supplies: db.supplies || [], shifts: db.shifts || [],
+        supplies: db.supplies || [], shifts: db.shifts || [], timelogs: db.timelogs || [],
         settings: db.settings, me: this._public(this._currentUser()),
       };
     },
     async save(collection, item) {
       const db = this._db();
+      const isNew = !item.id;
       const list = db[collection + "s"] || [];
       const now = new Date().toISOString();
       const me = State.session ? State.session.username : "";
@@ -238,12 +251,14 @@
       if (idx >= 0) list[idx] = item;
       db[collection + "s"] = list;
       this._saveDb(db);
+      if (collection !== "timelog") this._logActivity(`${isNew ? "created" : "updated"} ${collection} “${item.title || item.name || item.id}”`);
       return { ok: true, item };
     },
     async remove(collection, id) {
       const db = this._db();
       db[collection + "s"] = (db[collection + "s"] || []).filter((x) => x.id !== id);
       this._saveDb(db);
+      if (collection !== "timelog") this._logActivity(`deleted ${collection} ${id}`);
       return { ok: true };
     },
     async settingsSave(settings) {
@@ -323,7 +338,7 @@
   const State = {
     session: null,            /* { username, token } */
     me: null,                 /* public user record */
-    jobs: [], animals: [], supplies: [], shifts: [],
+    jobs: [], animals: [], supplies: [], shifts: [], timelogs: [],
     settings: null,
     activeTab: "dashboard",
   };
@@ -348,6 +363,7 @@
     State.animals = res.animals || [];
     State.supplies = res.supplies || [];
     State.shifts = res.shifts || [];
+    State.timelogs = res.timelogs || [];
     State.settings = res.settings || State.settings;
     if (res.me && res.me.username) State.me = res.me;
     await generateRecurringJobs();
@@ -679,6 +695,22 @@
     );
     view.appendChild(stats);
 
+    /* time clock + quick actions */
+    const open = openTimelog();
+    const clock = el("div", { class: "clock-bar" });
+    if (open) {
+      clock.appendChild(el("div", { class: "clock-status on" },
+        el("span", { class: "clock-dot" }),
+        el("span", { html: `Clocked in since <strong>${fmtTime((open.clockIn || "").slice(11, 16))}</strong> · ${hoursStr(hoursBetween(open.clockIn, new Date().toISOString()))}` })));
+      clock.appendChild(el("button", { class: "primary sm", onclick: clockOut }, "Clock out"));
+    } else {
+      clock.appendChild(el("div", { class: "clock-status", text: "Not clocked in" }));
+      clock.appendChild(el("button", { class: "primary sm", onclick: clockIn }, "Clock in"));
+    }
+    clock.appendChild(el("span", { class: "clock-week", text: `This week: ${hoursStr(myHoursSince(startOfWeek(new Date()).toISOString()))}` }));
+    clock.appendChild(el("button", { class: "ghost sm", onclick: () => printRunSheet() }, "🖨 Daily run sheet"));
+    view.appendChild(clock);
+
     const cols = el("div", { class: "dash-cols" });
 
     /* my next jobs */
@@ -725,13 +757,14 @@
 
     /* data export */
     const exportCard = el("div", { class: "panel-card" },
-      el("h3", { text: "Export / backup" }),
-      el("p", { class: "muted small", text: "Download a spreadsheet-ready CSV of your current data." }),
+      el("h3", { text: "Export & sharing" }),
+      el("p", { class: "muted small", text: "Download a spreadsheet-ready CSV, or open the public adoptable-animals page." }),
       el("div", { class: "export-row" },
         el("button", { class: "ghost", onclick: () => exportCSV("animals") }, "⬇ Animals"),
         el("button", { class: "ghost", onclick: () => exportCSV("jobs") }, "⬇ Jobs"),
         el("button", { class: "ghost", onclick: () => exportCSV("supplies") }, "⬇ Supplies"),
-        el("button", { class: "ghost", onclick: () => exportCSV("shifts") }, "⬇ Shifts")));
+        el("button", { class: "ghost", onclick: () => exportCSV("shifts") }, "⬇ Shifts"),
+        el("a", { class: "ghost btn-link", href: "adopt.html", target: "_blank" }, "🌐 Adoptable page")));
     view.appendChild(exportCard);
   }
 
@@ -766,6 +799,96 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast(`Exported ${rows.length} ${kind}`);
+  }
+
+  /* ── Volunteer / staff time clock ──────────────────────────────── */
+  function openTimelog() {
+    return State.timelogs.find((t) => t.user === State.me.username && !t.clockOut) || null;
+  }
+  function hoursBetween(a, b) {
+    if (!a || !b) return 0;
+    return Math.max(0, (Date.parse(b) - Date.parse(a)) / 3600000);
+  }
+  function hoursStr(h) {
+    const hh = Math.floor(h);
+    const mm = Math.round((h - hh) * 60);
+    return `${hh}h ${String(mm).padStart(2, "0")}m`;
+  }
+  function myHoursSince(iso) {
+    return State.timelogs
+      .filter((t) => t.user === State.me.username && (t.clockIn || "") >= iso)
+      .reduce((sum, t) => sum + hoursBetween(t.clockIn, t.clockOut || new Date().toISOString()), 0);
+  }
+  async function clockIn() {
+    if (openTimelog()) return;
+    const res = await Store.save("timelog", { user: State.me.username, clockIn: new Date().toISOString(), clockOut: "" });
+    if (res.ok) { toast("Clocked in"); await refresh(); }
+  }
+  async function clockOut() {
+    const open = openTimelog();
+    if (!open) return;
+    const res = await Store.save("timelog", { ...open, clockOut: new Date().toISOString() });
+    if (res.ok) { toast("Clocked out"); await refresh(); }
+  }
+
+  /* ── Daily run sheet (printable) ───────────────────────────────── */
+  function printRunSheet() {
+    const surface = $("#printSurface");
+    surface.innerHTML = "";
+    const orgName = (State.settings && State.settings.orgName) || "Aurora Sanctuary";
+    const todays = State.jobs.filter((j) => !isTemplate(j) && j.status !== "done" &&
+      (!j.dueDate || j.dueDate <= todayISO()));
+    const byCat = { daily: [], after_hours: [], weekend: [] };
+    todays.forEach((j) => (byCat[j.category] || byCat.daily).push(j));
+
+    const sheet = el("div", { class: "run-sheet" },
+      el("div", { class: "rs-head" },
+        el("h1", { text: orgName + " — Daily Run Sheet" }),
+        el("div", { text: new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }) })));
+
+    ["daily", "after_hours", "weekend"].forEach((cat) => {
+      const list = byCat[cat];
+      if (!list.length) return;
+      sheet.appendChild(el("h2", { class: "rs-cat", text: CATEGORY_LABELS[cat] + " tasks" }));
+      const ul = el("div", { class: "rs-tasks" });
+      sortJobs(list).forEach((j) => {
+        const an = j.animalId && State.animals.find((a) => a.id === j.animalId);
+        ul.appendChild(el("div", { class: "rs-task" },
+          el("span", { class: "rs-box" }),
+          el("span", { class: "rs-task-main" },
+            el("strong", { text: j.title || "(task)" }),
+            document.createTextNode(
+              (j.dueTime ? " · " + fmtTime(j.dueTime) : "") +
+              (j.assignedTo ? " · " + userLabel(j.assignedTo) : " · ____________") +
+              (an ? " · 🐾 " + an.name : ""))),
+        ));
+      });
+      sheet.appendChild(ul);
+    });
+    if (!todays.length) sheet.appendChild(el("p", { text: "No open tasks for today." }));
+
+    /* feeding / kennel chart */
+    const inCareAnimals = State.animals.filter(inCare).sort((a, b) =>
+      String(a.kennel || "~").localeCompare(String(b.kennel || "~"), undefined, { numeric: true }));
+    if (inCareAnimals.length) {
+      sheet.appendChild(el("h2", { class: "rs-cat", text: "Feeding & kennel chart" }));
+      const table = el("table", { class: "rs-table" });
+      table.appendChild(el("thead", {}, el("tr", {}, ...["Kennel", "Animal", "Feeding", "AM", "PM", "Notes"].map((h) => el("th", { text: h })))));
+      const tb = el("tbody");
+      inCareAnimals.forEach((a) => tb.appendChild(el("tr", {},
+        el("td", { text: a.kennel || "—" }),
+        el("td", {}, el("strong", { text: a.name || "" }), el("div", { class: "rs-sp", text: [a.species, a.status].filter(Boolean).join(" · ") })),
+        el("td", { text: a.feeding || "" }),
+        el("td", { class: "rs-check" }), el("td", { class: "rs-check" }),
+        el("td", {}))));
+      table.appendChild(tb);
+      sheet.appendChild(table);
+    }
+    surface.appendChild(sheet);
+    document.body.classList.add("printing-cards");
+    const cleanup = () => { document.body.classList.remove("printing-cards"); window.removeEventListener("afterprint", cleanup); };
+    window.addEventListener("afterprint", cleanup);
+    setTimeout(() => window.print(), 60);
   }
 
   /* ================================================================
@@ -1263,11 +1386,73 @@
       el("div", { class: "modal-actions" },
         el("button", { type: "button", class: "link-btn danger", onclick: () => { closeModal(); removeItem("animal", a.id, `Remove ${a.name}? This cannot be undone.`); } }, "Delete"),
         el("div", {},
+          el("button", { type: "button", class: "ghost", onclick: () => openShareModal(a) }, "🔗 Share / QR"),
           el("button", { type: "button", class: "ghost", onclick: () => printKennelCards([a]) }, "🖨 Kennel card"),
           el("button", { type: "button", class: "primary", onclick: () => openAnimalForm(a) }, "Edit"))
       ),
     );
     openModal(a.name || "Animal", body);
+  }
+
+  /* ── Share / QR for a public adoptable profile ─────────────────── */
+  function publicUrlFor(a) {
+    return new URL("adopt.html?id=" + encodeURIComponent(a.id), location.href).href;
+  }
+  function qrSvg(text, cell = 5) {
+    if (typeof qrcode === "undefined") return null;
+    try {
+      const qr = qrcode(0, "M");
+      qr.addData(text);
+      qr.make();
+      const svg = qr.createSvgTag({ cellSize: cell, margin: cell * 2, scalable: true });
+      const wrap = el("div", { class: "qr-wrap" });
+      wrap.innerHTML = svg;
+      return wrap;
+    } catch { return null; }
+  }
+  function openShareModal(a) {
+    const url = publicUrlFor(a);
+    const body = el("div", { class: "share-modal" });
+
+    if (!a.shareable) {
+      body.appendChild(el("div", { class: "alert" },
+        document.createTextNode("This animal isn't public yet. Turn on sharing to let the QR link show their profile. "),
+        el("button", { class: "link-btn brand", onclick: async () => { await patchAnimal(a, { shareable: true }, false); a.shareable = true; openShareModal(a); } }, "Make public →")));
+    }
+    const qr = qrSvg(url, 6);
+    if (qr) body.appendChild(qr);
+    else body.appendChild(el("p", { class: "muted", text: "QR code unavailable." }));
+
+    body.appendChild(el("p", { class: "muted small", text: a.shareable ? "Anyone with this link or QR code can view a public profile (name, photo, basic info) for this animal." : "Preview — the link won't work for the public until you make the animal public and deploy the site." }));
+    const link = input("_", url, { readonly: true, class: "share-link" });
+    body.appendChild(el("div", { class: "share-link-row" }, link,
+      el("button", { class: "ghost sm", onclick: () => { link.select && link.select(); navigator.clipboard && navigator.clipboard.writeText(url); toast("Link copied"); } }, "Copy")));
+
+    body.appendChild(el("div", { class: "modal-actions" },
+      el("label", { class: "share-toggle" },
+        (() => { const cb = el("input", { type: "checkbox" }); if (a.shareable) cb.checked = true; cb.addEventListener("change", async () => { await patchAnimal(a, { shareable: cb.checked }, false); a.shareable = cb.checked; toast(cb.checked ? "Now public" : "No longer public"); }); return cb; })(),
+        el("span", { text: " Visible on public adoptable page" })),
+      el("div", {},
+        el("button", { class: "ghost", onclick: () => printQR(a, url) }, "🖨 Print QR"),
+        el("button", { class: "primary", onclick: () => openAnimalDetail(a) }, "Done"))));
+    openModal("Share " + (a.name || "animal"), body);
+  }
+  function printQR(a, url) {
+    const surface = $("#printSurface");
+    surface.innerHTML = "";
+    const orgName = (State.settings && State.settings.orgName) || "Aurora Sanctuary";
+    const card = el("div", { class: "qr-print" },
+      el("div", { class: "qr-print-org", text: orgName }),
+      el("h1", { class: "qr-print-name", text: (a.name || "") + (a.species ? " · " + a.species : "") }),
+      el("p", { class: "qr-print-sub", text: "Scan to meet me and learn more!" }));
+    const qr = qrSvg(url, 8);
+    if (qr) card.appendChild(qr);
+    card.appendChild(el("p", { class: "qr-print-url", text: url }));
+    surface.appendChild(card);
+    document.body.classList.add("printing-cards");
+    const cleanup = () => { document.body.classList.remove("printing-cards"); window.removeEventListener("afterprint", cleanup); };
+    window.addEventListener("afterprint", cleanup);
+    setTimeout(() => window.print(), 60);
   }
 
   /* Save a patch to an animal, refresh, then re-open its detail so inline
@@ -1488,6 +1673,11 @@
       field("Medical notes", textarea("medical", a.medical, { rows: 2, placeholder: "Vaccinations, meds, conditions" })),
       field("Feeding instructions", textarea("feeding", a.feeding, { rows: 2 })),
       field("General notes", textarea("notes", a.notes, { rows: 2 })),
+      el("div", { class: "f-field" }, el("span", { text: "Public profile (adoptable page)" }),
+        el("label", { class: "check-row" },
+          (() => { const cb = el("input", { type: "checkbox", name: "shareable" }); if (a.shareable) cb.checked = true; return cb; })(),
+          el("span", { text: " Show this animal on the public adoptable page / QR" }))),
+      field("Public bio", textarea("publicBio", a.publicBio, { rows: 2, placeholder: "Friendly description shown to the public (no medical/private info)" })),
       el("div", { class: "modal-actions" },
         animal ? el("button", { type: "button", class: "link-btn danger", onclick: () => { closeModal(); removeItem("animal", animal.id, `Remove ${animal.name}?`); } }, "Delete") : el("span"),
         el("div", {},
@@ -1751,7 +1941,10 @@
       view.appendChild(el("div", { class: "empty" }, "Admin tools are available to administrators only."));
       return;
     }
-    view.appendChild(sectionHeader("Admin", "Manage staff accounts and sanctuary settings."));
+    view.appendChild(sectionHeader("Admin", "Reports, staff accounts, and sanctuary settings."));
+
+    view.appendChild(reportsCard());
+    view.appendChild(hoursCard());
 
     /* org settings */
     const s = State.settings || {};
@@ -1768,8 +1961,172 @@
     /* users */
     const usersCard = el("div", { class: "panel-card" }, el("h3", { text: "Staff accounts" }), el("div", { id: "usersHost", class: "table-wrap" }, "Loading…"));
     view.appendChild(usersCard);
+
+    /* data import */
+    view.appendChild(importCard());
+
+    /* activity log */
+    const actCard = el("div", { class: "panel-card" },
+      el("div", { class: "row-between" }, el("h3", { text: "Activity log" }),
+        el("button", { class: "link-btn brand", onclick: () => loadActivity() }, "Refresh")),
+      el("p", { class: "muted small", text: "Recent changes across the sanctuary." }),
+      el("div", { id: "activityHost" }, "Loading…"));
+    view.appendChild(actCard);
+
     await loadUsers();
     renderUsersTable();
+    loadActivity();
+  }
+
+  /* ── Reports ───────────────────────────────────────────────────── */
+  function reportsCard() {
+    const animals = State.animals;
+    const inCareList = animals.filter(inCare);
+    const today = todayISO();
+    const days30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const days90 = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+
+    /* status breakdown */
+    const byStatus = {};
+    inCareList.forEach((a) => { const k = a.status || "—"; byStatus[k] = (byStatus[k] || 0) + 1; });
+
+    /* length of stay */
+    const stays = inCareList.filter((a) => a.intakeDate).map((a) => ({ a, days: Math.max(0, Math.round((Date.parse(today) - Date.parse(a.intakeDate)) / 86400000)) }));
+    const avgStay = stays.length ? Math.round(stays.reduce((s, x) => s + x.days, 0) / stays.length) : 0;
+    const longest = stays.sort((x, y) => y.days - x.days).slice(0, 5);
+
+    const intakes30 = animals.filter((a) => (a.intakeDate || "") >= days30).length;
+    const adoptions30 = animals.filter((a) => a.placementType === "Adopted" && (a.placementDate || "") >= days30).length;
+    const adoptions90 = animals.filter((a) => a.placementType === "Adopted" && (a.placementDate || "") >= days90).length;
+    const jobsDone7 = State.jobs.filter((j) => j.status === "done" && (j.completedAt || "") >= new Date(Date.now() - 7 * 86400000).toISOString()).length;
+
+    const maxStatus = Math.max(1, ...Object.values(byStatus));
+    const card = el("div", { class: "panel-card" }, el("h3", { text: "Reports" }),
+      el("div", { class: "report-stats" },
+        miniStat(inCareList.length, "In care"),
+        miniStat(avgStay + "d", "Avg length of stay"),
+        miniStat(intakes30, "Intakes (30d)"),
+        miniStat(adoptions30, "Adoptions (30d)"),
+        miniStat(adoptions90, "Adoptions (90d)"),
+        miniStat(jobsDone7, "Jobs done (7d)")));
+
+    card.appendChild(el("h4", { class: "report-sub", text: "Animals by status" }));
+    const bars = el("div", { class: "bar-list" });
+    Object.entries(byStatus).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => {
+      bars.appendChild(el("div", { class: "bar-row" },
+        el("span", { class: "bar-label", text: k }),
+        el("span", { class: "bar-track" }, el("span", { class: "bar-fill", style: `width:${Math.round(v / maxStatus * 100)}%` })),
+        el("span", { class: "bar-num", text: String(v) })));
+    });
+    card.appendChild(bars);
+
+    if (longest.length) {
+      card.appendChild(el("h4", { class: "report-sub", text: "Longest residents" }));
+      const ul = el("div", { class: "bar-list" });
+      longest.forEach(({ a, days }) => ul.appendChild(el("div", { class: "bar-row simple" },
+        el("span", { class: "bar-label", text: a.name + (a.kennel ? " · " + a.kennel : "") }),
+        el("span", { class: "bar-num", text: days + " days" }))));
+      card.appendChild(ul);
+    }
+    return card;
+  }
+  function miniStat(value, label) {
+    return el("div", { class: "mini-stat" }, el("span", { class: "mini-stat-v", text: String(value) }), el("span", { class: "mini-stat-l", text: label }));
+  }
+
+  /* ── Volunteer hours summary (admin) ───────────────────────────── */
+  function hoursCard() {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    const totals = {};
+    State.timelogs.forEach((t) => {
+      if ((t.clockIn || "") < since) return;
+      const h = hoursBetween(t.clockIn, t.clockOut || new Date().toISOString());
+      totals[t.user] = (totals[t.user] || 0) + h;
+    });
+    const rows = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+    const card = el("div", { class: "panel-card" },
+      el("h3", { text: "Volunteer / staff hours (last 30 days)" }));
+    if (!rows.length) { card.appendChild(el("p", { class: "muted", text: "No clock-in time recorded yet." })); return card; }
+    const list = el("div", { class: "bar-list" });
+    const max = Math.max(1, ...rows.map((r) => r[1]));
+    rows.forEach(([user, h]) => list.appendChild(el("div", { class: "bar-row" },
+      el("span", { class: "bar-label", text: userLabel(user) }),
+      el("span", { class: "bar-track" }, el("span", { class: "bar-fill alt", style: `width:${Math.round(h / max * 100)}%` })),
+      el("span", { class: "bar-num", text: hoursStr(h) }))));
+    card.appendChild(list);
+    return card;
+  }
+
+  async function loadActivity() {
+    const host = $("#activityHost");
+    if (!host) return;
+    const res = await Store.activityList();
+    host.innerHTML = "";
+    const items = (res && res.activity) || [];
+    if (!items.length) { host.appendChild(el("p", { class: "muted", text: "No activity yet." })); return; }
+    const list = el("div", { class: "activity-list" });
+    items.slice(0, 100).forEach((a) => list.appendChild(el("div", { class: "activity-row" },
+      el("span", { class: "activity-when", text: activityWhen(a.ts) }),
+      el("span", { class: "activity-text", html: `<strong>${esc(userLabel(a.user))}</strong> ${esc(a.text)}` }))));
+    host.appendChild(list);
+  }
+  function activityWhen(ts) {
+    if (!ts) return "";
+    const d = new Date(ts), now = new Date();
+    const mins = Math.round((now - d) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + "m ago";
+    if (mins < 1440) return Math.round(mins / 60) + "h ago";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  /* ── CSV import (animals) ──────────────────────────────────────── */
+  function importCard() {
+    const fileInput = el("input", { type: "file", accept: ".csv,text/csv" });
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = (e) => importAnimalsCSV(String(e.target.result || ""));
+      reader.readAsText(f);
+    });
+    return el("div", { class: "panel-card" },
+      el("h3", { text: "Import animals (CSV)" }),
+      el("p", { class: "muted small", text: "Upload a CSV with a header row. Recognized columns: name, species, breed, sex, age, color, weight, status, kennel, microchip, intakeDate, medical, feeding, notes. Each row becomes a new animal." }),
+      el("label", { class: "photo-pick" }, fileInput, el("span", { class: "photo-pick-btn", text: "⬆ Choose CSV file" })));
+  }
+  function parseCSV(text) {
+    const rows = []; let row = [], cur = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+        else if (c === '"') q = false;
+        else cur += c;
+      } else if (c === '"') q = true;
+      else if (c === ",") { row.push(cur); cur = ""; }
+      else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cur); rows.push(row); row = []; cur = ""; }
+      else cur += c;
+    }
+    if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter((r) => r.some((x) => String(x).trim() !== ""));
+  }
+  async function importAnimalsCSV(text) {
+    const rows = parseCSV(text);
+    if (rows.length < 2) { toast("CSV needs a header row and at least one row", "err"); return; }
+    const allowed = ["name", "species", "breed", "sex", "age", "color", "weight", "status", "kennel", "microchip", "intakeDate", "medical", "feeding", "notes", "publicBio"];
+    const headers = rows[0].map((h) => h.trim());
+    let count = 0, skipped = 0;
+    for (let i = 1; i < rows.length; i++) {
+      const obj = {};
+      headers.forEach((h, idx) => { if (allowed.includes(h)) obj[h] = (rows[i][idx] || "").trim(); });
+      if (!obj.name) { skipped++; continue; }
+      const res = await Store.save("animal", obj);
+      if (res.ok) count++;
+    }
+    toast(`Imported ${count} animal${count === 1 ? "" : "s"}${skipped ? `, skipped ${skipped}` : ""}`);
+    await refresh();
+    if (State.activeTab === "admin") renderAdmin();
   }
 
   function renderUsersTable() {

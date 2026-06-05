@@ -48,7 +48,14 @@ const COLLECTIONS = {
   animal: "animal::",
   supply: "supply::",
   shift: "shift::",
+  timelog: "timelog::",
 };
+
+const ACT_PREFIX = "act::";
+const ACT_TTL_SEC = 60 * 60 * 24 * 120; /* keep ~120 days of activity */
+
+/* Fields safe to expose on the public adoptable page (no auth). */
+const PUBLIC_ANIMAL_FIELDS = ["id", "name", "species", "breed", "sex", "age", "color", "photo", "status", "publicBio"];
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -88,6 +95,10 @@ export async function onRequest(context) {
       case "config":
         return json({ ok: true, backend: true, kv: Boolean(env.AURORA_KV) });
 
+      /* ── public, no-auth (adoptable page) ── */
+      case "public_list":   return await handlePublicList(env);
+      case "public_animal": return await handlePublicAnimal(env, body);
+
       /* ── auth ── */
       case "register":     return await handleRegister(env, body);
       case "login":        return await handleLogin(env, body);
@@ -96,6 +107,9 @@ export async function onRequest(context) {
 
       /* ── staff directory (any signed-in user) ── */
       case "staff_list":   return await guard(env, body, "user", () => handleStaffList(env));
+
+      /* ── activity log (admin) ── */
+      case "activity_list": return await guard(env, body, "admin", () => handleActivityList(env));
 
       /* ── admin user management ── */
       case "admin_list":   return await guard(env, body, "admin", () => handleAdminList(env, body));
@@ -408,6 +422,7 @@ async function handleSave(env, body, user) {
   const item = body.item && typeof body.item === "object" ? { ...body.item } : null;
   if (!item) return json({ ok: false, error: "item_required" }, 400);
 
+  const isNew = !item.id;
   const now = new Date().toISOString();
   if (!item.id) {
     item.id = randomId();
@@ -430,28 +445,96 @@ async function handleSave(env, body, user) {
   }
 
   await env.AURORA_KV.put(prefix + item.id, JSON.stringify(item));
+  /* Don't log time-clock punches as activity (they have their own view). */
+  if (collection !== "timelog") {
+    const label = item.title || item.name || item.id;
+    await recordActivity(env, user.username, `${isNew ? "created" : "updated"} ${collection} “${label}”`);
+  }
   return json({ ok: true, item });
 }
 
-async function handleDelete(env, body) {
-  const prefix = COLLECTIONS[String(body.collection || "")];
+async function handleDelete(env, body, user) {
+  const collection = String(body.collection || "");
+  const prefix = COLLECTIONS[collection];
   if (!prefix) return json({ ok: false, error: "unknown_collection" }, 400);
   const id = String(body.id || "");
   if (!id) return json({ ok: false, error: "id_required" }, 400);
   await env.AURORA_KV.delete(prefix + id);
+  if (collection !== "timelog" && user) {
+    await recordActivity(env, user.username, `deleted ${collection} ${id}`);
+  }
   return json({ ok: true });
 }
 
 async function handleSnapshot(env, user) {
-  const [jobs, animals, supplies, shifts] = await Promise.all([
+  const [jobs, animals, supplies, shifts, timelogs] = await Promise.all([
     listCollection(env, COLLECTIONS.job),
     listCollection(env, COLLECTIONS.animal),
     listCollection(env, COLLECTIONS.supply),
     listCollection(env, COLLECTIONS.shift),
+    listCollection(env, COLLECTIONS.timelog),
   ]);
   const settingsRes = await handleSettingsGet(env);
   const settings = (await settingsRes.json()).settings;
-  return json({ ok: true, jobs, animals, supplies, shifts, settings, me: publicUser(user) });
+  return json({ ok: true, jobs, animals, supplies, shifts, timelogs, settings, me: publicUser(user) });
+}
+
+/* ── Activity log ─────────────────────────────────────────────────────── */
+
+async function recordActivity(env, username, text) {
+  try {
+    const ts = Date.now();
+    const key = ACT_PREFIX + (1e15 - ts) + "-" + randomId(); /* reverse-ts key = newest first */
+    const entry = { ts: new Date(ts).toISOString(), user: username, text };
+    await env.AURORA_KV.put(key, JSON.stringify(entry), { expirationTtl: ACT_TTL_SEC });
+  } catch { /* logging must never break the operation */ }
+}
+
+async function handleActivityList(env) {
+  const items = [];
+  let cursor;
+  do {
+    const page = await env.AURORA_KV.list({ prefix: ACT_PREFIX, limit: 200, cursor });
+    for (const k of page.keys) {
+      const raw = await env.AURORA_KV.get(k.name);
+      if (!raw) continue;
+      try { items.push(JSON.parse(raw)); } catch { /* skip */ }
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+    if (items.length >= 200) break;
+  } while (cursor);
+  /* keys already sort newest-first via reverse-ts prefix */
+  return json({ ok: true, activity: items.slice(0, 200) });
+}
+
+/* ── Public adoptable page (no auth) ──────────────────────────────────── */
+
+function publicAnimal(a) {
+  const out = {};
+  for (const f of PUBLIC_ANIMAL_FIELDS) out[f] = a[f] || "";
+  return out;
+}
+
+async function handlePublicList(env) {
+  const animals = await listCollection(env, COLLECTIONS.animal);
+  const shareable = animals.filter((a) => a.shareable === true).map(publicAnimal);
+  shareable.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  const settingsRes = await handleSettingsGet(env);
+  const settings = (await settingsRes.json()).settings;
+  return json({ ok: true, animals: shareable, orgName: settings.orgName });
+}
+
+async function handlePublicAnimal(env, body) {
+  const id = String(body.id || "");
+  if (!id) return json({ ok: false, error: "id_required" }, 400);
+  const raw = await env.AURORA_KV.get(COLLECTIONS.animal + id);
+  if (!raw) return json({ ok: false, error: "not_found" }, 404);
+  let a;
+  try { a = JSON.parse(raw); } catch { return json({ ok: false, error: "not_found" }, 404); }
+  if (a.shareable !== true) return json({ ok: false, error: "not_public" }, 403);
+  const settingsRes = await handleSettingsGet(env);
+  const settings = (await settingsRes.json()).settings;
+  return json({ ok: true, animal: publicAnimal(a), orgName: settings.orgName });
 }
 
 async function listCollection(env, prefix) {

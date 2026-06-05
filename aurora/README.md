@@ -17,7 +17,20 @@ An internal staff web app for an animal rescue. It covers:
   care. Set a per-animal-per-day usage rate and the app estimates daily use,
   days of stock remaining, and flags items that need reordering.
 - **Admin** — manage staff accounts (roles, password resets) and sanctuary
-  settings (org name, kennel/cage list, animal statuses, job types).
+  settings (org name, kennel/cage list, animal statuses, job types); plus
+  **reports** (length of stay, intake/adoption trends, longest residents),
+  a **volunteer/staff hours** summary, an **activity log** (who did what),
+  and **CSV import** to bulk-load animals.
+- **Time clock** — staff clock in/out from the dashboard; hours roll up in
+  Admin for grant reporting and volunteer recognition.
+- **Daily run sheet** — one-tap printable task + feeding/kennel chart for
+  rounds (works off paper).
+- **Public adoptable page** (`adopt.html`) — a no-login page listing animals
+  you mark "shareable," with an individual profile per animal. Each animal
+  has a **Share / QR** button that generates a scannable QR code (printable)
+  linking the public to that animal's profile. Only public-safe fields
+  (name, photo, species/breed/age, public bio) are ever exposed — never
+  medical, microchip, kennel, or placement details.
 
 ## Two ways it runs
 
