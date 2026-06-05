@@ -1,0 +1,9 @@
+name = "sanctuary"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "."
+
+# Binds the KV namespace your data lives in to the variable the API expects.
+# After you create the namespace (see DEPLOY.md), paste its id below.
+[[kv_namespaces]]
+binding = "AURORA_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
