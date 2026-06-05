@@ -43,6 +43,29 @@
     return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
   };
   const todayISO = () => new Date().toISOString().slice(0, 10);
+
+  /* Read an image file and return a downscaled JPEG data URL (keeps KV small
+     and uploads fast from phones). */
+  function readImageResized(file, maxDim, cb) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        try { cb(canvas.toDataURL("image/jpeg", 0.82)); }
+        catch { cb(e.target.result); }
+      };
+      img.onerror = () => cb("");
+      img.src = e.target.result;
+    };
+    reader.onerror = () => cb("");
+    reader.readAsDataURL(file);
+  }
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
   ));
@@ -302,7 +325,7 @@
     me: null,                 /* public user record */
     jobs: [], animals: [], supplies: [], shifts: [],
     settings: null,
-    activeTab: "todo",
+    activeTab: "dashboard",
   };
 
   function loadSession() {
@@ -327,8 +350,74 @@
     State.shifts = res.shifts || [];
     State.settings = res.settings || State.settings;
     if (res.me && res.me.username) State.me = res.me;
+    await generateRecurringJobs();
     renderActive();
     $("#orgNameHeading").textContent = (State.settings && State.settings.orgName) || "Aurora Sanctuary";
+  }
+
+  /* ── Recurring jobs ────────────────────────────────────────────────
+   * A job with recurrence !== "none" is treated as a TEMPLATE: it is not
+   * itself a todo, it spawns a dated instance each day its rule matches.
+   * Instances use a deterministic id (templateId + date) so two devices
+   * generating at once overwrite the same record instead of duplicating. */
+  function isTemplate(j) { return j && j.recurrence && j.recurrence !== "none" && !j.templateId; }
+
+  function recurrenceMatches(template, date) {
+    const dow = date.getDay(); /* 0=Sun … 6=Sat */
+    switch (template.recurrence) {
+      case "daily": return true;
+      case "weekdays": return dow >= 1 && dow <= 5;
+      case "weekends": return dow === 0 || dow === 6;
+      case "weekly": {
+        const anchor = template.dueDate || (template.createdAt || "").slice(0, 10);
+        if (!anchor) return dow === date.getDay();
+        return new Date(anchor + "T00:00:00").getDay() === dow;
+      }
+      default: return false;
+    }
+  }
+
+  async function generateRecurringJobs() {
+    const today = new Date(todayISO() + "T00:00:00");
+    const iso = todayISO();
+    const existing = new Set(State.jobs.map((j) => j.id));
+    const toCreate = [];
+    for (const t of State.jobs) {
+      if (!isTemplate(t)) continue;
+      if (!recurrenceMatches(t, today)) continue;
+      const instanceId = t.id + "_" + iso;
+      if (existing.has(instanceId)) continue;
+      toCreate.push({
+        id: instanceId,
+        templateId: t.id,
+        title: t.title, description: t.description || "",
+        type: t.type || "", category: t.category || "daily",
+        assignedTo: t.assignedTo || "", priority: t.priority || "normal",
+        animalId: t.animalId || "",
+        recurrence: "none", status: t.assignedTo ? "in_progress" : "open",
+        dueDate: iso, dueTime: t.dueTime || "",
+        createdAt: new Date().toISOString(), createdBy: t.createdBy || State.me.username,
+      });
+    }
+    if (!toCreate.length) return;
+    for (const inst of toCreate) {
+      const res = await Store.save("job", inst);
+      if (res.ok) State.jobs.push(res.item || inst);
+    }
+  }
+
+  /* A job is overdue if it's actionable, has a due date, and that date/time
+     has passed. Templates are never "overdue". */
+  function isOverdue(j) {
+    if (!j || isTemplate(j) || j.status === "done" || !j.dueDate) return false;
+    const now = new Date();
+    if (j.dueDate < todayISO()) return true;
+    if (j.dueDate === todayISO() && j.dueTime) {
+      const [h, m] = j.dueTime.split(":").map(Number);
+      const due = new Date(); due.setHours(h || 0, m || 0, 0, 0);
+      return now > due;
+    }
+    return false;
   }
 
   /* ================================================================
@@ -490,14 +579,19 @@
   /* ================================================================
    * TABS / ROUTER
    * ================================================================ */
+  function selectTab(tab) {
+    State.activeTab = tab;
+    $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
+    $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + tab));
+    window.scrollTo(0, 0);
+    renderActive();
+  }
+
   function wireTabs() {
     $("#tabBar").addEventListener("click", (e) => {
       const btn = e.target.closest(".tab");
       if (!btn) return;
-      State.activeTab = btn.dataset.tab;
-      $$(".tab").forEach((t) => t.classList.toggle("active", t === btn));
-      $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + State.activeTab));
-      renderActive();
+      selectTab(btn.dataset.tab);
     });
     $("#logoutBtn").addEventListener("click", signOut);
     $("#modalClose").addEventListener("click", closeModal);
@@ -506,6 +600,7 @@
 
   function renderActive() {
     switch (State.activeTab) {
+      case "dashboard": return renderDashboard();
       case "todo": return renderTodo();
       case "jobs": return renderJobs();
       case "schedule": return renderSchedule();
@@ -536,6 +631,135 @@
   const CATEGORY_LABELS = { daily: "Daytime", after_hours: "After hours", weekend: "Weekend" };
   const PRIORITY_LABELS = { high: "High", normal: "Normal", low: "Low" };
 
+  const inCare = (a) => !/adopt/i.test(a.status || "");
+
+  /* ================================================================
+   * VIEW: DASHBOARD (home)
+   * ================================================================ */
+  function renderDashboard() {
+    const view = $("#view-dashboard");
+    view.innerHTML = "";
+
+    const hour = new Date().getHours();
+    const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    view.appendChild(el("div", { class: "view-head" },
+      el("div", {},
+        el("h2", { text: `${greet}, ${esc(State.me.name || State.me.username)}` }),
+        el("p", { class: "muted", text: new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) }))));
+
+    const animalsInCare = State.animals.filter(inCare);
+    const actionable = State.jobs.filter((j) => !isTemplate(j));
+    const myOpen = actionable.filter((j) => j.assignedTo === State.me.username && j.status !== "done");
+    const myOverdue = myOpen.filter(isOverdue);
+    const openUnassigned = actionable.filter((j) => !j.assignedTo && j.status !== "done");
+    const todaysShifts = State.shifts.filter((s) => s.date === todayISO())
+      .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+    const animalCount = animalsInCare.length;
+    const lowSupplies = State.supplies.filter((s) => {
+      const d = daysRemaining(s, animalCount);
+      return d != null && d <= (Number(s.reorderDays) || 7);
+    });
+
+    /* stat tiles */
+    const stats = el("div", { class: "stat-grid" },
+      statTile("🐾", animalCount, "Animals in care", "animals"),
+      statTile("📋", myOpen.length, "My open jobs", "todo", myOverdue.length ? "warn" : ""),
+      statTile("⏰", myOverdue.length, "My overdue", "todo", myOverdue.length ? "danger" : ""),
+      statTile("📅", todaysShifts.length, "Shifts today", "schedule"),
+      statTile("📦", lowSupplies.length, "Low supplies", "supplies", lowSupplies.length ? "danger" : ""),
+      statTile("🙋", openUnassigned.length, "Open to claim", "todo"),
+    );
+    view.appendChild(stats);
+
+    const cols = el("div", { class: "dash-cols" });
+
+    /* my next jobs */
+    const jobsCard = el("div", { class: "panel-card" });
+    jobsCard.appendChild(el("div", { class: "row-between" },
+      el("h3", { text: "My next jobs" }),
+      el("button", { class: "link-btn brand", onclick: () => selectTab("todo") }, "View all →")));
+    const next = sortJobs([...myOverdue, ...myOpen.filter((j) => !isOverdue(j))]).slice(0, 6);
+    if (!next.length) jobsCard.appendChild(el("p", { class: "muted", text: "Nothing assigned right now. 🎉" }));
+    next.forEach((j) => jobsCard.appendChild(el("div", { class: "dash-line" + (isOverdue(j) ? " overdue" : ""), onclick: () => selectTab("todo") },
+      el("span", { class: "dash-dot pr-" + (j.priority || "normal") }),
+      el("span", { class: "dash-line-main", text: j.title || "(untitled)" }),
+      el("span", { class: "dash-line-meta", text: isOverdue(j) ? "Overdue" : (j.dueTime ? fmtTime(j.dueTime) : CATEGORY_LABELS[j.category] || "") }))));
+    cols.appendChild(jobsCard);
+
+    /* today's schedule */
+    const schedCard = el("div", { class: "panel-card" });
+    schedCard.appendChild(el("div", { class: "row-between" },
+      el("h3", { text: "Today's schedule" }),
+      el("button", { class: "link-btn brand", onclick: () => selectTab("schedule") }, "Open →")));
+    if (!todaysShifts.length) schedCard.appendChild(el("p", { class: "muted", text: "No shifts scheduled today." }));
+    todaysShifts.forEach((s) => schedCard.appendChild(el("div", { class: "dash-line" },
+      el("span", { class: "dash-line-meta strong", text: (fmtTime(s.startTime) || "") + (s.endTime ? "–" + fmtTime(s.endTime) : "") }),
+      el("span", { class: "dash-line-main", text: userLabel(s.assignedTo) + (s.role ? " · " + s.role : "") }),
+      el("span", { class: "chip period-" + (s.period || "day") + "-chip", text: s.period === "after_hours" ? "After hrs" : s.period === "weekend" ? "Weekend" : "Day" }))));
+    cols.appendChild(schedCard);
+
+    /* low supplies */
+    if (lowSupplies.length) {
+      const supCard = el("div", { class: "panel-card" });
+      supCard.appendChild(el("div", { class: "row-between" },
+        el("h3", { text: "⚠ Reorder soon" }),
+        el("button", { class: "link-btn brand", onclick: () => selectTab("supplies") }, "Open →")));
+      lowSupplies.forEach((s) => {
+        const d = daysRemaining(s, animalCount);
+        supCard.appendChild(el("div", { class: "dash-line" },
+          el("span", { class: "dash-line-main", text: s.name }),
+          el("span", { class: "dash-line-meta", text: `${num(s.quantity)} ${s.unit || ""} · ~${round(d)}d left` })));
+      });
+      cols.appendChild(supCard);
+    }
+
+    view.appendChild(cols);
+
+    /* data export */
+    const exportCard = el("div", { class: "panel-card" },
+      el("h3", { text: "Export / backup" }),
+      el("p", { class: "muted small", text: "Download a spreadsheet-ready CSV of your current data." }),
+      el("div", { class: "export-row" },
+        el("button", { class: "ghost", onclick: () => exportCSV("animals") }, "⬇ Animals"),
+        el("button", { class: "ghost", onclick: () => exportCSV("jobs") }, "⬇ Jobs"),
+        el("button", { class: "ghost", onclick: () => exportCSV("supplies") }, "⬇ Supplies"),
+        el("button", { class: "ghost", onclick: () => exportCSV("shifts") }, "⬇ Shifts")));
+    view.appendChild(exportCard);
+  }
+
+  function statTile(icon, value, label, tab, tone = "") {
+    return el("button", { class: "stat-tile" + (tone ? " tone-" + tone : ""), onclick: () => selectTab(tab) },
+      el("span", { class: "stat-icon", text: icon }),
+      el("span", { class: "stat-value", text: String(value) }),
+      el("span", { class: "stat-label", text: label }));
+  }
+
+  /* ── CSV export ────────────────────────────────────────────────── */
+  const CSV_COLUMNS = {
+    animals: ["name", "species", "breed", "sex", "age", "color", "weight", "status", "kennel", "microchip", "intakeDate", "medical", "feeding", "notes"],
+    jobs: ["title", "type", "category", "assignedTo", "priority", "status", "dueDate", "dueTime", "recurrence", "completedAt", "completedBy"],
+    supplies: ["name", "category", "unit", "quantity", "perAnimalPerDay", "reorderDays", "notes"],
+    shifts: ["date", "period", "startTime", "endTime", "assignedTo", "role", "notes"],
+  };
+  function csvCell(v) {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function exportCSV(kind) {
+    const cols = CSV_COLUMNS[kind];
+    let rows = State[kind] || [];
+    if (kind === "jobs") rows = rows.filter((j) => !isTemplate(j)); /* export real jobs, not rules */
+    const header = cols.join(",");
+    const body = rows.map((r) => cols.map((c) => csvCell(r[c])).join(",")).join("\n");
+    const csv = header + "\n" + body;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = el("a", { href: url, download: `aurora-${kind}-${todayISO()}.csv` });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`Exported ${rows.length} ${kind}`);
+  }
+
   /* ================================================================
    * VIEW: MY TODO
    * ================================================================ */
@@ -547,17 +771,26 @@
       "Jobs assigned to you, plus open jobs anyone can pick up.",
     ));
 
-    const mine = State.jobs.filter((j) => j.assignedTo === State.me.username && j.status !== "done");
-    const unassigned = State.jobs.filter((j) => !j.assignedTo && j.status !== "done");
-    const doneToday = State.jobs.filter((j) =>
+    const actionable = State.jobs.filter((j) => !isTemplate(j));
+    const mineAll = actionable.filter((j) => j.assignedTo === State.me.username && j.status !== "done");
+    const overdue = mineAll.filter(isOverdue);
+    const mine = mineAll.filter((j) => !isOverdue(j));
+    const unassigned = actionable.filter((j) => !j.assignedTo && j.status !== "done");
+    const doneToday = actionable.filter((j) =>
       j.assignedTo === State.me.username && j.status === "done" &&
       (j.completedAt || "").slice(0, 10) === todayISO()
     );
 
-    if (!mine.length && !unassigned.length) {
+    if (!mineAll.length && !unassigned.length) {
       view.appendChild(el("div", { class: "empty" }, "🎉 Nothing on your list right now."));
     }
 
+    if (overdue.length) {
+      view.appendChild(el("h3", { class: "group-title overdue", text: `⏰ Overdue (${overdue.length})` }));
+      const grid = el("div", { class: "card-grid" });
+      sortJobs(overdue).forEach((j) => grid.appendChild(todoCard(j)));
+      view.appendChild(grid);
+    }
     if (mine.length) {
       view.appendChild(el("h3", { class: "group-title", text: `Assigned to me (${mine.length})` }));
       const grid = el("div", { class: "card-grid" });
@@ -590,11 +823,13 @@
   function todoCard(j, claimable = false) {
     const animal = j.animalId && State.animals.find((a) => a.id === j.animalId);
     const done = j.status === "done";
-    const card = el("div", { class: "job-card pr-" + (j.priority || "normal") + (done ? " is-done" : "") });
+    const overdue = isOverdue(j);
+    const card = el("div", { class: "job-card pr-" + (j.priority || "normal") + (done ? " is-done" : "") + (overdue ? " is-overdue" : "") });
     card.appendChild(el("div", { class: "job-card-top" },
       el("span", { class: "chip cat-" + (j.category || "daily"), text: CATEGORY_LABELS[j.category] || "Daytime" }),
       j.priority === "high" ? el("span", { class: "chip danger", text: "High" }) : null,
-      j.dueDate ? el("span", { class: "chip ghost", text: fmtDate(j.dueDate) + (j.dueTime ? " · " + fmtTime(j.dueTime) : "") }) : null,
+      overdue ? el("span", { class: "chip danger", text: "Overdue" }) : null,
+      j.dueDate ? el("span", { class: "chip " + (overdue ? "danger" : "ghost"), text: fmtDate(j.dueDate) + (j.dueTime ? " · " + fmtTime(j.dueTime) : "") }) : null,
     ));
     card.appendChild(el("h4", { text: j.title || "(untitled)" }));
     if (j.description) card.appendChild(el("p", { class: "muted small", text: j.description }));
@@ -645,20 +880,25 @@
       labeledSelect("Status", [
         { value: "open", label: "Open / active" },
         { value: "done", label: "Completed" },
-        { value: "", label: "All statuses" },
+        { value: "templates", label: "Recurring rules" },
+        { value: "", label: "All (no templates)" },
       ], f.status, (v) => { f.status = v; renderJobs(); }),
       labeledSelect("Assignee", [{ value: "", label: "Everyone" }, { value: "__none", label: "Unassigned" }, ...staffOptions(false)], f.assignee, (v) => { f.assignee = v; renderJobs(); }),
     );
     view.appendChild(bar);
 
-    let list = [...State.jobs];
+    const showTemplates = f.status === "templates";
+    let list = State.jobs.filter((j) => showTemplates ? isTemplate(j) : !isTemplate(j));
     if (f.category) list = list.filter((j) => j.category === f.category);
     if (f.status === "open") list = list.filter((j) => j.status !== "done");
     else if (f.status === "done") list = list.filter((j) => j.status === "done");
     if (f.assignee === "__none") list = list.filter((j) => !j.assignedTo);
     else if (f.assignee) list = list.filter((j) => j.assignedTo === f.assignee);
 
-    if (!list.length) { view.appendChild(el("div", { class: "empty" }, "No jobs match these filters.")); return; }
+    if (showTemplates) {
+      view.appendChild(el("p", { class: "muted small", text: "Recurring rules generate a fresh job each day they apply. Edit or delete a rule here; existing generated jobs are unaffected." }));
+    }
+    if (!list.length) { view.appendChild(el("div", { class: "empty" }, showTemplates ? "No recurring rules yet. Create a job and set it to repeat." : "No jobs match these filters.")); return; }
 
     const table = el("table", { class: "data-table" });
     table.appendChild(el("thead", {}, el("tr", {},
@@ -667,15 +907,16 @@
     const tbody = el("tbody");
     sortJobs(list).forEach((j) => {
       const animal = j.animalId && State.animals.find((a) => a.id === j.animalId);
-      tbody.appendChild(el("tr", { class: j.status === "done" ? "row-done" : "" },
+      const overdue = isOverdue(j);
+      tbody.appendChild(el("tr", { class: j.status === "done" ? "row-done" : (overdue ? "row-overdue" : "") },
         el("td", {}, el("strong", { text: j.title || "(untitled)" }),
           animal ? el("div", { class: "muted small", text: "🐾 " + animal.name }) : null,
-          j.recurrence && j.recurrence !== "none" ? el("div", { class: "muted small", text: "↻ " + j.recurrence }) : null),
+          isTemplate(j) ? el("div", { class: "muted small", text: "↻ " + (j.recurrence || "") }) : null),
         el("td", {}, el("span", { class: "chip cat-" + (j.category || "daily"), text: CATEGORY_LABELS[j.category] || "Daytime" })),
         el("td", { text: userLabel(j.assignedTo) }),
-        el("td", { text: j.dueDate ? fmtDate(j.dueDate) + (j.dueTime ? " " + fmtTime(j.dueTime) : "") : "—" }),
+        el("td", { text: isTemplate(j) ? "↻ " + (j.recurrence || "") : (j.dueDate ? fmtDate(j.dueDate) + (j.dueTime ? " " + fmtTime(j.dueTime) : "") : "—") }),
         el("td", {}, el("span", { class: "chip " + (j.priority === "high" ? "danger" : "ghost"), text: PRIORITY_LABELS[j.priority] || "Normal" })),
-        el("td", {}, statusChip(j)),
+        el("td", {}, isTemplate(j) ? el("span", { class: "chip info", text: "Recurring" }) : (overdue ? el("span", { class: "chip danger", text: "Overdue" }) : statusChip(j))),
         el("td", { class: "row-actions" },
           el("button", { class: "link-btn", onclick: () => openJobForm(j) }, "Edit"),
           el("button", { class: "link-btn danger", onclick: () => removeItem("job", j.id, "Delete this job?") }, "Delete"))
@@ -894,7 +1135,9 @@
       const openJobs = State.jobs.filter((j) => j.animalId === a.id && j.status !== "done").length;
       grid.appendChild(el("div", { class: "animal-card", onclick: () => openAnimalDetail(a) },
         el("div", { class: "animal-card-head" },
-          el("span", { class: "animal-avatar", text: speciesEmoji(a.species) }),
+          a.photo
+            ? el("span", { class: "animal-avatar photo", style: `background-image:url(${a.photo})` })
+            : el("span", { class: "animal-avatar", text: speciesEmoji(a.species) }),
           el("div", {}, el("h4", { text: a.name || "(unnamed)" }),
             el("p", { class: "muted small", text: [a.species, a.breed].filter(Boolean).join(" · ") || "—" })),
         ),
@@ -934,6 +1177,7 @@
     const openJobs = jobs.filter((j) => j.status !== "done");
     const rows = (label, val) => val ? el("div", { class: "kv" }, el("span", { class: "k", text: label }), el("span", { class: "v", text: val })) : null;
     const body = el("div", { class: "animal-detail" },
+      a.photo ? el("img", { class: "detail-photo", src: a.photo, alt: a.name || "" }) : null,
       el("div", { class: "detail-grid" },
         rows("Species", a.species), rows("Breed", a.breed), rows("Sex", a.sex),
         rows("Age", a.age), rows("Color", a.color), rows("Weight", a.weight),
@@ -963,7 +1207,9 @@
   function openAnimalForm(animal) {
     const a = animal || { status: (State.settings.animalStatuses || ["Available"])[0], intakeDate: todayISO() };
     const kennelOpts = [{ value: "", label: "— Not assigned —" }, ...(State.settings.kennels || []).map((k) => ({ value: k, label: k })), { value: "__custom", label: "Other (type below)" }];
+    const photoState = { url: a.photo || "" };
     const form = el("form", { class: "modal-form" },
+      photoField(photoState),
       el("div", { class: "form-row" },
         field("Name", input("name", a.name, { required: true })),
         field("Species", input("species", a.species, { placeholder: "Dog, Cat, Rabbit…", list: "speciesList" })),
@@ -1000,10 +1246,33 @@
       if (v.kennel === "__custom") v.kennel = (v.kennelCustom || "").trim();
       delete v.kennelCustom;
       if (!v.name.trim()) { toast("Name is required", "err"); return; }
-      const res = await Store.save("animal", { ...a, ...v });
+      const res = await Store.save("animal", { ...a, ...v, photo: photoState.url });
       if (res.ok) { closeModal(); toast(animal ? "Animal updated" : "Animal added"); await refresh(); }
     });
     openModal(animal ? "Edit animal" : "Add animal", form);
+  }
+
+  function photoField(photoState) {
+    const preview = el("img", { class: "photo-preview" + (photoState.url ? "" : " hidden"), src: photoState.url, alt: "" });
+    const fileInput = el("input", { type: "file", accept: "image/*", capture: "environment" });
+    const removeBtn = el("button", { type: "button", class: "link-btn danger" + (photoState.url ? "" : " hidden") },
+      "Remove photo");
+    removeBtn.addEventListener("click", () => { photoState.url = ""; preview.src = ""; preview.classList.add("hidden"); removeBtn.classList.add("hidden"); });
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      readImageResized(f, 900, (url) => {
+        if (!url) { toast("Could not read image", "err"); return; }
+        photoState.url = url; preview.src = url;
+        preview.classList.remove("hidden"); removeBtn.classList.remove("hidden");
+      });
+    });
+    return el("div", { class: "f-field photo-field" },
+      el("span", { text: "Photo" }),
+      preview,
+      el("div", { class: "photo-controls" },
+        el("label", { class: "photo-pick" }, fileInput, el("span", { class: "photo-pick-btn", text: "📷 Take / choose photo" })),
+        removeBtn));
   }
 
   function kennelField(a, kennelOpts) {
@@ -1028,7 +1297,9 @@
           el("div", { class: "kc-org", text: orgName }),
           el("div", { class: "kc-kennel", text: a.kennel || "Unassigned" })),
         el("div", { class: "kc-name-row" },
-          el("span", { class: "kc-emoji", text: speciesEmoji(a.species) }),
+          a.photo
+            ? el("img", { class: "kc-photo", src: a.photo, alt: "" })
+            : el("span", { class: "kc-emoji", text: speciesEmoji(a.species) }),
           el("h2", { class: "kc-name", text: a.name || "(unnamed)" }),
           el("span", { class: "kc-status", text: a.status || "" })),
         el("div", { class: "kc-grid" },

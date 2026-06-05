@@ -3,8 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='18' fill='%231f6f5c'/%3E%3Cpath d='M40 18c10 8 18 16 18 26a18 18 0 0 1-36 0c0-10 8-18 18-26z' fill='%23eaf7f2'/%3E%3Ccircle cx='32' cy='40' r='3.4' fill='%231f6f5c'/%3E%3Ccircle cx='48' cy='40' r='3.4' fill='%231f6f5c'/%3E%3C/svg%3E" />
+    <link rel="icon" href="icons/icon-192.png" />
     <title>Aurora Sanctuary</title>
+    <meta name="theme-color" content="#2d3a73" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Aurora" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -12,12 +19,7 @@
     <section id="authOverlay" class="auth-overlay" role="dialog" aria-modal="true" aria-labelledby="authTitle">
       <div class="auth-card">
         <div class="auth-top">
-          <svg class="auth-mark" viewBox="0 0 80 80" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-            <rect width="80" height="80" rx="18" fill="#1f6f5c"/>
-            <path d="M40 18c10 8 18 16 18 26a18 18 0 0 1-36 0c0-10 8-18 18-26z" fill="#eaf7f2"/>
-            <circle cx="32" cy="40" r="3.4" fill="#1f6f5c"/>
-            <circle cx="48" cy="40" r="3.4" fill="#1f6f5c"/>
-          </svg>
+          <img class="auth-mark" src="assets/logo.png" alt="Aurora Sanctuary" />
           <div>
             <span class="auth-kicker">Aurora Sanctuary</span>
             <h2 id="authTitle">Sign In</h2>
@@ -85,12 +87,7 @@
     <div id="app" class="app hidden">
       <header class="topbar">
         <div class="brand">
-          <svg class="brand-mark" viewBox="0 0 80 80" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-            <rect width="80" height="80" rx="18" fill="#1f6f5c"/>
-            <path d="M40 18c10 8 18 16 18 26a18 18 0 0 1-36 0c0-10 8-18 18-26z" fill="#eaf7f2"/>
-            <circle cx="32" cy="40" r="3.4" fill="#1f6f5c"/>
-            <circle cx="48" cy="40" r="3.4" fill="#1f6f5c"/>
-          </svg>
+          <img class="brand-mark" src="assets/logo.png" alt="" />
           <div>
             <h1 id="orgNameHeading">Aurora Sanctuary</h1>
             <p class="brand-sub">Schedule &amp; animal care</p>
@@ -106,7 +103,8 @@
       </header>
 
       <nav class="tabs" id="tabBar">
-        <button class="tab active" data-tab="todo">My Todo</button>
+        <button class="tab active" data-tab="dashboard">Home</button>
+        <button class="tab" data-tab="todo">My Todo</button>
         <button class="tab" data-tab="jobs">Jobs</button>
         <button class="tab" data-tab="schedule">Schedule</button>
         <button class="tab" data-tab="animals">Animals</button>
@@ -115,7 +113,8 @@
       </nav>
 
       <main id="views">
-        <section id="view-todo" class="view active"></section>
+        <section id="view-dashboard" class="view active"></section>
+        <section id="view-todo" class="view"></section>
         <section id="view-jobs" class="view"></section>
         <section id="view-schedule" class="view"></section>
         <section id="view-animals" class="view"></section>
@@ -143,5 +142,12 @@
     <div id="toast" class="toast hidden" aria-live="polite"></div>
 
     <script src="app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("sw.js").catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>
