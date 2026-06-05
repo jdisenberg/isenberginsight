@@ -1001,10 +1001,11 @@
     let results   = null;     /* {pct, lCm, wCm, areaCm} */
 
     /* Zoom / loupe state */
-    let traceZoom = 1.0;      /* active zoom multiplier for step 3 */
+    let traceZoom = 1.0;       /* active zoom multiplier for step 3 */
     let traceZoomOriginIx = 0; /* image-px coords of zoom center */
     let traceZoomOriginIy = 0;
-    let holdTimer = null;      /* long-press timer → auto-zoom */
+    let autoZoomEnabled = true; /* hold-to-zoom feature toggle */
+    let holdTimer = null;       /* stationary-hold timer → auto-zoom */
     let holdStartClientX = 0;
     let holdStartClientY = 0;
     let suppressNextClick = false; /* swallow synthetic click after touchend */
@@ -1327,11 +1328,27 @@
     }
 
     /* ── Zoom helpers (step 3) ── */
+    function startHoldTimer(pt) {
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        if (!autoZoomEnabled || traceZoom > 1) return;
+        traceZoomOriginIx = pt.ix; traceZoomOriginIy = pt.iy;
+        traceZoom = 3.0;
+        if (navigator.vibrate) navigator.vibrate(25);
+        drawCanvas(); updateZoomBtn();
+      }, 1000);
+    }
+
     function updateZoomBtn() {
       const btn = $("analyzerZoomBtn"); if (!btn) return;
-      const zoomed = traceZoom > 1;
-      btn.textContent = zoomed ? "Zoom Out" : "Zoom In";
-      btn.classList.toggle("az-btn-active", zoomed);
+      if (traceZoom > 1) {
+        btn.textContent = "Zoom Out"; btn.classList.add("az-btn-active");
+      } else if (autoZoomEnabled) {
+        btn.textContent = "Auto-Zoom: On"; btn.classList.remove("az-btn-active");
+      } else {
+        btn.textContent = "Auto-Zoom: Off"; btn.classList.remove("az-btn-active");
+      }
     }
 
     /* Step 2 (ruler): mouse click to place points (touch handled separately) */
@@ -1345,7 +1362,7 @@
       drawCanvas();
     }
 
-    /* Step 3 (wound): drag to trace; hold 500 ms without moving to zoom in */
+    /* Step 3 (wound): drag to trace; holding still 1 s triggers auto-zoom */
     function onDrawStart(evt) {
       if (!photo || step !== 3) return;
       evt.preventDefault();
@@ -1353,43 +1370,28 @@
       const src = (evt.touches && evt.touches[0]) || evt;
       holdStartClientX = src.clientX; holdStartClientY = src.clientY;
       const pt = eventToImagePt(evt); if (!pt) return;
-      if (traceZoom > 1) {
-        /* already zoomed — start drawing immediately */
-        isDrawing = true; woundPath = [pt]; drawCanvas();
-      } else {
-        /* start hold-to-zoom timer */
-        holdTimer = setTimeout(() => {
-          holdTimer = null;
-          traceZoomOriginIx = pt.ix; traceZoomOriginIy = pt.iy;
-          traceZoom = 3.0;
-          if (navigator.vibrate) navigator.vibrate(25);
-          drawCanvas(); updateZoomBtn();
-        }, 500);
-      }
+      /* drawing starts immediately regardless of zoom state */
+      isDrawing = true; woundPath = [pt]; drawCanvas();
+      if (autoZoomEnabled && traceZoom === 1) startHoldTimer(pt);
     }
 
     function onDrawMove(evt) {
-      if (step !== 3) return;
+      if (!isDrawing || step !== 3) return;
       evt.preventDefault();
       const src = (evt.touches && evt.touches[0]) || evt;
-      if (holdTimer) {
-        /* cancel zoom timer if finger moved more than ~8 css px */
+      const pt = eventToImagePt(evt); if (!pt) return;
+      /* reset 1-s hold timer whenever finger moves meaningfully */
+      if (autoZoomEnabled && traceZoom === 1) {
         const dx = Math.abs(src.clientX - holdStartClientX);
         const dy = Math.abs(src.clientY - holdStartClientY);
-        if (dx > 18 || dy > 18) {
-          clearTimeout(holdTimer); holdTimer = null;
-          /* treat as start of draw stroke */
-          const pt = eventToImagePt(evt); if (!pt) return;
-          isDrawing = true; woundPath = [pt]; drawCanvas();
+        if (dx > 10 || dy > 10) {
+          holdStartClientX = src.clientX; holdStartClientY = src.clientY;
+          startHoldTimer(pt);
         }
-        return;
       }
-      if (!isDrawing) return;
-      const pt = eventToImagePt(evt); if (!pt) return;
       const last = woundPath[woundPath.length - 1];
       if (!last || Math.abs(pt.ix - last.ix) + Math.abs(pt.iy - last.iy) > 3) {
-        woundPath.push(pt);
-        drawCanvas();
+        woundPath.push(pt); drawCanvas();
       }
     }
 
@@ -1763,20 +1765,13 @@
         c.addEventListener("touchcancel", (e) => { if (step === 2) hideLoupe(); else onDrawEnd(e); }, { passive: false });
       }
 
-      /* zoom button (step 3) */
+      /* zoom button (step 3) — zooms out if active, otherwise toggles auto-zoom feature */
       $("analyzerZoomBtn")?.addEventListener("click", () => {
         if (traceZoom > 1) {
           traceZoom = 1;
         } else {
-          /* zoom to wound centroid or image centre */
-          if (woundPath.length) {
-            traceZoomOriginIx = woundPath.reduce((s, p) => s + p.ix, 0) / woundPath.length;
-            traceZoomOriginIy = woundPath.reduce((s, p) => s + p.iy, 0) / woundPath.length;
-          } else {
-            traceZoomOriginIx = photoW / 2;
-            traceZoomOriginIy = photoH / 2;
-          }
-          traceZoom = 3.0;
+          autoZoomEnabled = !autoZoomEnabled;
+          if (!autoZoomEnabled) { clearTimeout(holdTimer); holdTimer = null; }
         }
         drawCanvas(); updateZoomBtn();
       });
