@@ -515,6 +515,16 @@
     }
   }
 
+  /* Stamp each <td> with its column header text so the stylesheet can
+     reflow the table into labeled stacked cards on small screens. */
+  function makeResponsive(table) {
+    const heads = $$("thead th", table).map((th) => th.textContent || "");
+    $$("tbody tr", table).forEach((tr) => {
+      $$("td", tr).forEach((td, i) => { if (heads[i]) td.setAttribute("data-label", heads[i]); });
+    });
+    return table;
+  }
+
   /* shared section header with an action button */
   function sectionHeader(title, subtitle, actionLabel, onAction) {
     return el("div", { class: "view-head" },
@@ -672,7 +682,7 @@
       ));
     });
     table.appendChild(tbody);
-    view.appendChild(el("div", { class: "table-wrap" }, table));
+    view.appendChild(el("div", { class: "table-wrap" }, makeResponsive(table)));
   }
 
   function statusChip(j) {
@@ -1088,7 +1098,7 @@
       ));
     });
     table.appendChild(tbody);
-    view.appendChild(el("div", { class: "table-wrap" }, table));
+    view.appendChild(el("div", { class: "table-wrap" }, makeResponsive(table)));
   }
 
   const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
@@ -1201,7 +1211,7 @@
       ));
     });
     table.appendChild(tbody);
-    host.appendChild(table);
+    host.appendChild(makeResponsive(table));
   }
 
   async function saveSettings() {

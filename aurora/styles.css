@@ -282,13 +282,114 @@ button.primary.sm { background: var(--brand); color: #fff; border: none; }
   @page { margin: 12mm; }
 }
 
-/* ── Responsive ────────────────────────────────────────────────── */
+/* ── Responsive / mobile ───────────────────────────────────────── */
+
+/* Comfortable tap targets + no iOS zoom on focus (needs >=16px controls). */
 @media (max-width: 760px) {
+  main#views { padding: 14px 12px 84px; }      /* room for bottom tab bar */
+
+  /* Header: let it scroll away; tabs become the sticky bottom nav. */
+  .topbar { position: static; flex-wrap: nowrap; padding: 10px 14px; }
+  .brand-sub { display: none; }
+  .brand h1 { font-size: 1.06rem; }
+  .brand-mark { width: 34px; height: 34px; }
+  .topbar-right { gap: 8px; }
+  .sync-badge { font-size: 0.68rem; padding: 3px 7px; }
+  .user-chip { font-size: 0.8rem; gap: 6px; }
+  .user-chip #userChipName { max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Tabs pinned to the bottom of the screen — thumb-friendly. */
+  .tabs {
+    position: fixed; bottom: 0; left: 0; right: 0; top: auto;
+    background: var(--brand-dark); padding: 0;
+    justify-content: space-between; gap: 0; overflow: visible;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.18);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tab {
+    flex: 1 1 0; text-align: center; padding: 10px 2px 9px;
+    font-size: 0.7rem; line-height: 1.12; white-space: normal;
+    border-bottom: none; border-top: 3px solid transparent;
+    min-height: 52px; display: flex; align-items: center; justify-content: center;
+  }
+  .tab.active { border-top-color: var(--accent); border-bottom: none; }
+
+  /* Forms / inputs: 16px prevents mobile Safari from zooming on focus. */
+  .f-field input, .f-field select, .f-field textarea,
+  .filter-field input, .filter-field select,
+  .auth-field input { font-size: 16px; }
+  .f-field input, .f-field select, .f-field textarea { padding: 11px 12px; }
+
+  /* Bigger buttons. */
+  button.primary, button.ghost { min-height: 46px; padding: 12px 16px; }
+  button.sm, button.primary.sm { min-height: 40px; }
+  .step { width: 36px; height: 36px; font-size: 1.1rem; }
+  .day-add { padding: 12px; }
+
+  /* Layout collapses already handled, plus a few more. */
   .week-board { grid-template-columns: 1fr; }
   .day-col { min-height: auto; }
   .form-row, .form-row:has(> :nth-child(3)) { grid-template-columns: 1fr; }
   .animal-detail .detail-grid { grid-template-columns: 1fr; }
+  .animal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .card-grid { grid-template-columns: 1fr; }
   .kc-grid { grid-template-columns: repeat(2, 1fr); }
-  main#views { padding: 14px; }
-  .topbar { flex-wrap: wrap; }
+  .view-head h2 { font-size: 1.3rem; }
+  .view-head .primary { width: 100%; }
+  .view-head { gap: 10px; }
+
+  /* Data tables → stacked, labeled cards (each row is a card). */
+  .table-wrap { border: none; background: none; box-shadow: none; overflow: visible; }
+  .data-table thead { display: none; }
+  .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
+  .data-table tr {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow-sm);
+    margin-bottom: 10px; padding: 8px 12px;
+  }
+  .data-table td {
+    border: none; padding: 8px 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .data-table td::before {
+    content: attr(data-label);
+    font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--muted); flex: 0 0 auto;
+  }
+  .data-table td:not([data-label]) { justify-content: flex-end; }
+  .data-table td:not([data-label])::before { content: ""; }
+  /* First cell (title) becomes a full-width heading block. */
+  .data-table td:first-child { flex-direction: column; align-items: flex-start; gap: 2px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  .data-table td:first-child::before { display: none; }
+  .data-table tr.row-done td, .data-table tr.row-low { } /* keep state styles */
+  .row-actions { gap: 16px; }
+  .row-actions .link-btn { padding: 6px 0; margin: 0; }
+
+  /* Filter bar stacks. */
+  .filter-bar { gap: 10px; }
+  .filter-field { width: 100%; }
+  .filter-field.grow { min-width: 0; }
+
+  /* Modal: full-screen sheet with a sticky action footer. */
+  .modal-root { padding: 0; align-items: stretch; }
+  .modal-card { max-width: none; min-height: 100%; border-radius: 0; display: flex; flex-direction: column; }
+  .modal-head { border-radius: 0; }
+  .modal-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .modal-actions { position: sticky; bottom: 0; background: var(--panel); margin: 8px -20px -22px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .modal-actions > div { flex: 1; justify-content: flex-end; }
+
+  /* Toast clears the bottom tab bar. */
+  .toast { bottom: calc(70px + env(safe-area-inset-bottom)); }
+}
+
+/* Very small phones: one animal card per row. */
+@media (max-width: 380px) {
+  .animal-grid { grid-template-columns: 1fr; }
+  .kc-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* Honor reduced-motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  .view.active { animation: none; }
+  .animal-card { transition: none; }
 }
