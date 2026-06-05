@@ -356,6 +356,8 @@
         <!-- Canvas — shared by steps 2–4 -->
         <div id="azCanvasWrap" class="az-canvas-wrap" hidden>
           <canvas id="analyzerCanvas" class="az-canvas"></canvas>
+          <!-- Loupe magnifier: visible only in step 2 while finger is held -->
+          <canvas id="azLoupeCanvas" width="160" height="160" class="az-loupe" hidden aria-hidden="true"></canvas>
         </div>
 
         <!-- Step 2: Ruler calibration -->
@@ -370,8 +372,9 @@
 
         <!-- Step 3: Wound outline -->
         <div id="azWoundSection" class="az-section" hidden>
-          <p id="analyzerWoundHint" class="az-hint">Trace around the wound bed — drag your finger or mouse along the wound edge. Avoid healthy skin.</p>
+          <p id="analyzerWoundHint" class="az-hint">Trace around the wound bed — drag along the wound edge. Hold still 0.5 s to zoom in, or use the Zoom button.</p>
           <div class="az-calib-row">
+            <button type="button" id="analyzerZoomBtn" class="az-small-btn">Zoom In</button>
             <button type="button" id="analyzerWoundUndoBtn" class="az-small-btn">Undo last point</button>
             <button type="button" id="analyzerWoundClearBtn" class="az-small-btn">Start over</button>
           </div>

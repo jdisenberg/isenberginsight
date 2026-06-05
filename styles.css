@@ -2443,6 +2443,7 @@ body.name-gate-active {
   padding: 0 18px;
   display: flex;
   justify-content: center;
+  position: relative; /* needed for loupe absolute positioning */
 }
 .az-canvas-wrap[hidden] { display: none !important; }
 
@@ -2487,6 +2488,22 @@ body.name-gate-active {
   box-shadow: none;
 }
 .az-small-btn:hover { background: #f9e8e3; }
+.az-small-btn.az-btn-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Loupe magnifier (step 2 ruler) */
+.az-loupe {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 20;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.45), 0 0 0 2px rgba(0,229,255,0.3);
+}
 
 .az-skip-btn {
   font-size: 0.78rem;

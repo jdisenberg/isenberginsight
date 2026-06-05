@@ -1000,6 +1000,15 @@
     let isDrawing = false;
     let results   = null;     /* {pct, lCm, wCm, areaCm} */
 
+    /* Zoom / loupe state */
+    let traceZoom = 1.0;      /* active zoom multiplier for step 3 */
+    let traceZoomOriginIx = 0; /* image-px coords of zoom center */
+    let traceZoomOriginIy = 0;
+    let holdTimer = null;      /* long-press timer → auto-zoom */
+    let holdStartClientX = 0;
+    let holdStartClientY = 0;
+    let suppressNextClick = false; /* swallow synthetic click after touchend */
+
     /* Per-card retained photos — IN-MEMORY ONLY.
        Keyed by the card's manualWoundId. Holds an object URL (blob ref) and
        the last analysis state so the user can re-open a wound's photo.
@@ -1011,6 +1020,7 @@
     /* ── element helpers ── */
     const $  = (id) => document.getElementById(id);
     const cvs = () => $("analyzerCanvas");
+    const loupeCvs = () => $("azLoupeCanvas");
     const cardKey = (card) => card && card.dataset ? card.dataset.manualWoundId : null;
 
     /* ── open / close ── */
@@ -1131,6 +1141,9 @@
       if (ab) ab.hidden = n !== 4;
 
       if (photo && n >= 2) drawCanvas();
+      /* reset zoom/loupe whenever leaving a step */
+      hideLoupe();
+      if (n !== 3 && traceZoom > 1) { traceZoom = 1; updateZoomBtn(); }
     }
 
     /* ── canvas ── */
@@ -1159,6 +1172,17 @@
       const c = cvs(); if (!c || !photo) return;
       const ctx = c.getContext("2d");
       ctx.clearRect(0, 0, canvW, canvH);
+
+      const zoomed = step === 3 && traceZoom > 1;
+      if (zoomed) {
+        const ox = traceZoomOriginIx * imgScale;
+        const oy = traceZoomOriginIy * imgScale;
+        ctx.save();
+        ctx.setTransform(traceZoom, 0, 0, traceZoom,
+          canvW / 2 - ox * traceZoom,
+          canvH / 2 - oy * traceZoom);
+      }
+
       ctx.drawImage(photo, 0, 0, canvW, canvH);
 
       /* ruler overlay — cyan */
@@ -1172,7 +1196,6 @@
         if (rulerPts.length === 2) {
           const a = toCanvas(rulerPts[0]); const b = toCanvas(rulerPts[1]);
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-          /* show px distance */
           ctx.fillStyle = "#00e5ff"; ctx.font = "bold 12px system-ui"; ctx.textAlign = "center";
           const cmVal = parseFloat($("analyzerRulerCm")?.value || "0");
           const label = cmVal > 0 ? `${cmVal} cm` : `${Math.round(pxDist(rulerPts[0], rulerPts[1]))} px`;
@@ -1201,6 +1224,17 @@
         ctx.stroke();
         ctx.restore();
       }
+
+      if (zoomed) {
+        ctx.restore(); /* reset transform */
+        /* "3× ZOOM" badge so the user knows they're in zoom mode */
+        ctx.save();
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.beginPath(); ctx.roundRect(6, 6, 76, 22, 5); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "left";
+        ctx.fillText("3× ZOOM", 12, 21);
+        ctx.restore();
+      }
     }
 
     function pxDist(a, b) {
@@ -1215,14 +1249,95 @@
       const cssScaleY = canvH / rect.height;
       const src = evt.touches && evt.touches.length ? evt.touches[0]
         : (evt.changedTouches && evt.changedTouches.length ? evt.changedTouches[0] : evt);
-      const cx = (src.clientX - rect.left) * cssScaleX;
-      const cy = (src.clientY - rect.top)  * cssScaleY;
+      let cx = (src.clientX - rect.left) * cssScaleX;
+      let cy = (src.clientY - rect.top)  * cssScaleY;
+      /* reverse zoom transform so traced points land in correct image coords */
+      if (step === 3 && traceZoom > 1) {
+        const ox = traceZoomOriginIx * imgScale;
+        const oy = traceZoomOriginIy * imgScale;
+        const tx = canvW / 2 - ox * traceZoom;
+        const ty = canvH / 2 - oy * traceZoom;
+        cx = (cx - tx) / traceZoom;
+        cy = (cy - ty) / traceZoom;
+      }
       return { ix: cx / imgScale, iy: cy / imgScale };
     }
 
-    /* Step 2 (ruler): tap to place up to two points */
+    /* ── Loupe magnifier (step 2) ── */
+    function showLoupe(clientX, clientY) {
+      const lc = loupeCvs(); const mc = cvs();
+      if (!lc || !mc || !photo) return;
+      const wrap = $("azCanvasWrap");
+      const wrapRect = wrap ? wrap.getBoundingClientRect() : mc.getBoundingClientRect();
+      const lCss = 140;                               /* loupe display size px */
+      let lx = clientX - wrapRect.left - lCss / 2;
+      let ly = clientY - wrapRect.top  - lCss - 28;  /* default: above finger */
+      lx = Math.max(4, Math.min(wrapRect.width - lCss - 4, lx));
+      if (ly < 4) ly = clientY - wrapRect.top + 28;  /* flip below if too high */
+      lc.style.left = `${lx}px`;
+      lc.style.top  = `${ly}px`;
+      lc.hidden = false;
+      drawLoupe(clientX, clientY);
+    }
+
+    function hideLoupe() {
+      const lc = loupeCvs(); if (lc) lc.hidden = true;
+    }
+
+    function drawLoupe(clientX, clientY) {
+      const lc = loupeCvs(); const mc = cvs();
+      if (!lc || !mc || !photo) return;
+      const lCtx = lc.getContext("2d");
+      const lW = lc.width, lH = lc.height, half = lW / 2;
+      const zoom = 3;
+      /* touch point in image coords */
+      const mcRect = mc.getBoundingClientRect();
+      const ix = ((clientX - mcRect.left) * (canvW / mcRect.width)) / imgScale;
+      const iy = ((clientY - mcRect.top)  * (canvH / mcRect.height)) / imgScale;
+      /* source region: lW/zoom × lH/zoom centred on (ix, iy), clamped to image */
+      const srcW = lW / zoom, srcH = lH / zoom;
+      const srcX = Math.max(0, Math.min(photoW - srcW, ix - srcW / 2));
+      const srcY = Math.max(0, Math.min(photoH - srcH, iy - srcH / 2));
+      lCtx.clearRect(0, 0, lW, lH);
+      /* circular clip */
+      lCtx.save();
+      lCtx.beginPath(); lCtx.arc(half, half, half - 2, 0, Math.PI * 2); lCtx.clip();
+      lCtx.drawImage(photo, srcX, srcY, srcW, srcH, 0, 0, lW, lH);
+      /* existing ruler points */
+      rulerPts.forEach((p) => {
+        const lpx = (p.ix - srcX) * zoom, lpy = (p.iy - srcY) * zoom;
+        if (lpx > -10 && lpx < lW + 10 && lpy > -10 && lpy < lH + 10) {
+          lCtx.fillStyle = "#00e5ff"; lCtx.shadowColor = "rgba(0,0,0,0.7)"; lCtx.shadowBlur = 4;
+          lCtx.beginPath(); lCtx.arc(lpx, lpy, 7, 0, Math.PI * 2); lCtx.fill();
+          lCtx.shadowBlur = 0;
+        }
+      });
+      /* crosshairs */
+      lCtx.strokeStyle = "rgba(255,255,255,0.9)"; lCtx.lineWidth = 1;
+      lCtx.beginPath();
+      lCtx.moveTo(half, 6); lCtx.lineTo(half, lH - 6);
+      lCtx.moveTo(6, half); lCtx.lineTo(lW - 6, half);
+      lCtx.stroke();
+      lCtx.fillStyle = "rgba(255,255,255,0.9)";
+      lCtx.beginPath(); lCtx.arc(half, half, 2.5, 0, Math.PI * 2); lCtx.fill();
+      lCtx.restore();
+      /* border ring */
+      lCtx.beginPath(); lCtx.arc(half, half, half - 1.5, 0, Math.PI * 2);
+      lCtx.strokeStyle = "rgba(0,229,255,0.9)"; lCtx.lineWidth = 3; lCtx.stroke();
+    }
+
+    /* ── Zoom helpers (step 3) ── */
+    function updateZoomBtn() {
+      const btn = $("analyzerZoomBtn"); if (!btn) return;
+      const zoomed = traceZoom > 1;
+      btn.textContent = zoomed ? "Zoom Out" : "Zoom In";
+      btn.classList.toggle("az-btn-active", zoomed);
+    }
+
+    /* Step 2 (ruler): mouse click to place points (touch handled separately) */
     function onCanvasTap(evt) {
       if (!photo || step !== 2) return;
+      if (suppressNextClick) { suppressNextClick = false; return; }
       evt.preventDefault();
       const pt = eventToImagePt(evt); if (!pt) return;
       rulerPts = rulerPts.length < 2 ? [...rulerPts, pt] : [pt];
@@ -1230,21 +1345,47 @@
       drawCanvas();
     }
 
-    /* Step 3 (wound): drag to trace a freeform outline */
+    /* Step 3 (wound): drag to trace; hold 500 ms without moving to zoom in */
     function onDrawStart(evt) {
       if (!photo || step !== 3) return;
       evt.preventDefault();
+      clearTimeout(holdTimer); holdTimer = null;
+      const src = (evt.touches && evt.touches[0]) || evt;
+      holdStartClientX = src.clientX; holdStartClientY = src.clientY;
       const pt = eventToImagePt(evt); if (!pt) return;
-      isDrawing = true;
-      woundPath = [pt];
-      drawCanvas();
+      if (traceZoom > 1) {
+        /* already zoomed — start drawing immediately */
+        isDrawing = true; woundPath = [pt]; drawCanvas();
+      } else {
+        /* start hold-to-zoom timer */
+        holdTimer = setTimeout(() => {
+          holdTimer = null;
+          traceZoomOriginIx = pt.ix; traceZoomOriginIy = pt.iy;
+          traceZoom = 3.0;
+          if (navigator.vibrate) navigator.vibrate(25);
+          drawCanvas(); updateZoomBtn();
+        }, 500);
+      }
     }
 
     function onDrawMove(evt) {
-      if (!isDrawing || step !== 3) return;
+      if (step !== 3) return;
       evt.preventDefault();
+      const src = (evt.touches && evt.touches[0]) || evt;
+      if (holdTimer) {
+        /* cancel zoom timer if finger moved more than ~8 css px */
+        const dx = Math.abs(src.clientX - holdStartClientX);
+        const dy = Math.abs(src.clientY - holdStartClientY);
+        if (dx > 8 || dy > 8) {
+          clearTimeout(holdTimer); holdTimer = null;
+          /* treat as start of draw stroke */
+          const pt = eventToImagePt(evt); if (!pt) return;
+          isDrawing = true; woundPath = [pt]; drawCanvas();
+        }
+        return;
+      }
+      if (!isDrawing) return;
       const pt = eventToImagePt(evt); if (!pt) return;
-      /* only record if moved a meaningful distance (reduces point density) */
       const last = woundPath[woundPath.length - 1];
       if (!last || Math.abs(pt.ix - last.ix) + Math.abs(pt.iy - last.iy) > 3) {
         woundPath.push(pt);
@@ -1253,11 +1394,11 @@
     }
 
     function onDrawEnd(evt) {
+      clearTimeout(holdTimer); holdTimer = null;
       if (!isDrawing) return;
       if (evt) evt.preventDefault();
       isDrawing = false;
-      drawCanvas();
-      updateWoundHint();
+      drawCanvas(); updateWoundHint();
       const nb = $("analyzerNextBtn");
       if (nb) nb.disabled = woundPath.length < 3;
     }
@@ -1567,7 +1708,7 @@
       $("analyzerSkipRulerBtn")?.addEventListener("click", () => setStep(3));
       $("analyzerRulerClearBtn")?.addEventListener("click", () => { rulerPts = []; pxPerCm = null; drawCanvas(); updateRulerHint(); });
       $("analyzerWoundClearBtn")?.addEventListener("click", () => {
-        woundPath = []; isDrawing = false; drawCanvas(); updateWoundHint();
+        woundPath = []; isDrawing = false; traceZoom = 1; drawCanvas(); updateWoundHint(); updateZoomBtn();
         const nb = $("analyzerNextBtn"); if (nb) nb.disabled = true;
       });
       $("analyzerWoundUndoBtn")?.addEventListener("click", () => {
@@ -1596,18 +1737,49 @@
       /* canvas events */
       const c = cvs();
       if (c) {
-        /* step 2 ruler — tap */
+        /* step 2 ruler — mouse click; touch handled below with loupe */
         c.addEventListener("click", onCanvasTap);
         /* step 3 wound — drag to draw (mouse) */
         c.addEventListener("mousedown", onDrawStart);
         c.addEventListener("mousemove", onDrawMove);
         window.addEventListener("mouseup", onDrawEnd);
-        /* step 3 wound — drag to draw (touch) */
-        c.addEventListener("touchstart", (e) => { if (step === 3) onDrawStart(e); else onCanvasTap(e); }, { passive: false });
-        c.addEventListener("touchmove", onDrawMove, { passive: false });
-        c.addEventListener("touchend", onDrawEnd, { passive: false });
-        c.addEventListener("touchcancel", onDrawEnd, { passive: false });
+        /* touch: step 2 shows loupe on move, places on end; step 3 draws */
+        c.addEventListener("touchstart", (e) => {
+          if (step === 2) { e.preventDefault(); showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
+          else onDrawStart(e);
+        }, { passive: false });
+        c.addEventListener("touchmove", (e) => {
+          if (step === 2) { e.preventDefault(); if (e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
+          else onDrawMove(e);
+        }, { passive: false });
+        c.addEventListener("touchend", (e) => {
+          if (step === 2) {
+            e.preventDefault();
+            suppressNextClick = true;
+            hideLoupe();
+            const pt = eventToImagePt(e); if (pt) { rulerPts = rulerPts.length < 2 ? [...rulerPts, pt] : [pt]; updateRulerHint(); drawCanvas(); }
+          } else onDrawEnd(e);
+        }, { passive: false });
+        c.addEventListener("touchcancel", (e) => { if (step === 2) hideLoupe(); else onDrawEnd(e); }, { passive: false });
       }
+
+      /* zoom button (step 3) */
+      $("analyzerZoomBtn")?.addEventListener("click", () => {
+        if (traceZoom > 1) {
+          traceZoom = 1;
+        } else {
+          /* zoom to wound centroid or image centre */
+          if (woundPath.length) {
+            traceZoomOriginIx = woundPath.reduce((s, p) => s + p.ix, 0) / woundPath.length;
+            traceZoomOriginIy = woundPath.reduce((s, p) => s + p.iy, 0) / woundPath.length;
+          } else {
+            traceZoomOriginIx = photoW / 2;
+            traceZoomOriginIy = photoH / 2;
+          }
+          traceZoom = 3.0;
+        }
+        drawCanvas(); updateZoomBtn();
+      });
       $("analyzerRulerCm")?.addEventListener("input", () => { drawCanvas(); updateRulerHint(); });
 
       /* re-fit the canvas on rotation / viewport changes while the modal is open */
