@@ -1001,7 +1001,7 @@
     let results   = null;     /* {pct, lCm, wCm, areaCm} */
 
     /* Loupe state */
-    let loupeEnabled = true;       /* loupe magnifier during wound tracing */
+    let loupeEnabled = false;      /* loupe magnifier — off by default */
     let suppressNextClick = false; /* swallow synthetic click after touchend */
 
     /* Per-card retained photos — IN-MEMORY ONLY.
@@ -1303,9 +1303,12 @@
     }
 
     function updateLoupeBtn() {
-      const btn = $("analyzerZoomBtn"); if (!btn) return;
-      btn.textContent = loupeEnabled ? "Magnifier: On" : "Magnifier: Off";
-      btn.classList.toggle("az-btn-active", loupeEnabled);
+      const label = loupeEnabled ? "Magnifier: On" : "Magnifier: Off";
+      [$("analyzerRulerMagBtn"), $("analyzerZoomBtn")].forEach((btn) => {
+        if (!btn) return;
+        btn.textContent = label;
+        btn.classList.toggle("az-btn-active", loupeEnabled);
+      });
     }
 
     /* Step 2 (ruler): mouse click to place points (touch handled separately) */
@@ -1689,12 +1692,12 @@
         /* touch: step 2 shows loupe on move, places on end; step 3 draws */
         c.addEventListener("touchstart", (e) => {
           e.preventDefault();
-          if (step === 2) { showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
+          if (step === 2) { if (loupeEnabled && e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
           else { if (loupeEnabled && step === 3 && e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); onDrawStart(e); }
         }, { passive: false });
         c.addEventListener("touchmove", (e) => {
           e.preventDefault();
-          if (step === 2) { if (e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
+          if (step === 2) { if (loupeEnabled && e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); }
           else { if (loupeEnabled && step === 3 && e.touches[0]) showLoupe(e.touches[0].clientX, e.touches[0].clientY); onDrawMove(e); }
         }, { passive: false });
         c.addEventListener("touchend", (e) => {
@@ -1708,12 +1711,14 @@
         c.addEventListener("touchcancel", (e) => { hideLoupe(); if (step !== 2) onDrawEnd(e); }, { passive: false });
       }
 
-      /* loupe toggle button (step 3) */
-      $("analyzerZoomBtn")?.addEventListener("click", () => {
+      /* loupe toggle buttons (steps 2 & 3 share one setting) */
+      const onLoupeBtnClick = () => {
         loupeEnabled = !loupeEnabled;
         if (!loupeEnabled) hideLoupe();
         updateLoupeBtn();
-      });
+      };
+      $("analyzerRulerMagBtn")?.addEventListener("click", onLoupeBtnClick);
+      $("analyzerZoomBtn")?.addEventListener("click", onLoupeBtnClick);
       updateLoupeBtn();
       $("analyzerRulerCm")?.addEventListener("input", () => { drawCanvas(); updateRulerHint(); });
 
