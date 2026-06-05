@@ -490,6 +490,9 @@
     document.body.classList.toggle("is-admin", State.me.role === "admin");
     setSyncBadge();
     await refresh();
+    /* Login reminder: nudge about anything assigned to me that's overdue. */
+    const overdue = State.jobs.filter((j) => j.assignedTo === State.me.username && isOverdue(j)).length;
+    if (overdue) setTimeout(() => toast(`⏰ You have ${overdue} overdue job${overdue > 1 ? "s" : ""}`, "err"), 400);
   }
 
   function signOut() {
@@ -659,6 +662,9 @@
       const d = daysRemaining(s, animalCount);
       return d != null && d <= (Number(s.reorderDays) || 7);
     });
+    const inFoster = State.animals.filter((a) => a.placementType === "Foster" && !a.returnDate).length;
+    const thirty = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const adopted30 = State.animals.filter((a) => a.placementType === "Adopted" && (a.placementDate || "") >= thirty).length;
 
     /* stat tiles */
     const stats = el("div", { class: "stat-grid" },
@@ -667,6 +673,8 @@
       statTile("⏰", myOverdue.length, "My overdue", "todo", myOverdue.length ? "danger" : ""),
       statTile("📅", todaysShifts.length, "Shifts today", "schedule"),
       statTile("📦", lowSupplies.length, "Low supplies", "supplies", lowSupplies.length ? "danger" : ""),
+      statTile("🏡", inFoster, "In foster", "animals"),
+      statTile("💚", adopted30, "Adopted (30d)", "animals"),
       statTile("🙋", openUnassigned.length, "Open to claim", "todo"),
     );
     view.appendChild(stats);
@@ -736,7 +744,7 @@
 
   /* ── CSV export ────────────────────────────────────────────────── */
   const CSV_COLUMNS = {
-    animals: ["name", "species", "breed", "sex", "age", "color", "weight", "status", "kennel", "microchip", "intakeDate", "medical", "feeding", "notes"],
+    animals: ["name", "species", "breed", "sex", "age", "color", "weight", "status", "kennel", "microchip", "intakeDate", "placementType", "placementPerson", "placementContact", "placementDate", "returnDate", "medical", "feeding", "notes"],
     jobs: ["title", "type", "category", "assignedTo", "priority", "status", "dueDate", "dueTime", "recurrence", "completedAt", "completedBy"],
     supplies: ["name", "category", "unit", "quantity", "perAnimalPerDay", "reorderDays", "notes"],
     shifts: ["date", "period", "startTime", "endTime", "assignedTo", "role", "notes"],
@@ -1092,10 +1100,19 @@
   function renderAnimals() {
     const view = $("#view-animals");
     view.innerHTML = "";
+    State._animalView = State._animalView || "list";
     view.appendChild(sectionHeader(
-      "Animals", `${State.animals.length} in care`,
+      "Animals", `${State.animals.filter(inCare).length} in care`,
       "+ Add animal", () => openAnimalForm()
     ));
+
+    /* List / Kennel-map toggle */
+    const seg = el("div", { class: "segmented" },
+      el("button", { class: "seg" + (State._animalView === "list" ? " active" : ""), onclick: () => { State._animalView = "list"; renderAnimals(); } }, "List"),
+      el("button", { class: "seg" + (State._animalView === "map" ? " active" : ""), onclick: () => { State._animalView = "map"; renderAnimals(); } }, "🗺 Kennel map"));
+    view.appendChild(seg);
+
+    if (State._animalView === "map") { renderKennelMap(view); return; }
 
     State._animalFilter = State._animalFilter || { q: "", status: "" };
     const f = State._animalFilter;
@@ -1112,6 +1129,53 @@
     const host = el("div", { id: "animalGridHost" });
     view.appendChild(host);
     renderAnimalGrid();
+  }
+
+  /* Visual grid of kennels/cages showing occupancy. */
+  function renderKennelMap(view) {
+    const kennels = (State.settings.kennels || []).slice();
+    const byKennel = new Map();
+    let unassigned = [];
+    for (const a of State.animals.filter(inCare)) {
+      if (!a.kennel) { unassigned.push(a); continue; }
+      if (!byKennel.has(a.kennel)) byKennel.set(a.kennel, []);
+      byKennel.get(a.kennel).push(a);
+    }
+    /* include custom kennels (used but not in settings list) */
+    for (const k of byKennel.keys()) if (!kennels.includes(k)) kennels.push(k);
+
+    const occupied = kennels.filter((k) => (byKennel.get(k) || []).length).length;
+    view.appendChild(el("p", { class: "muted small", text: `${occupied} of ${kennels.length} kennels occupied · ${unassigned.length} animal${unassigned.length === 1 ? "" : "s"} unassigned` }));
+
+    if (!kennels.length) {
+      view.appendChild(el("div", { class: "empty" }, "No kennels yet. Add your kennel/cage list in Admin → Sanctuary settings."));
+    }
+    const grid = el("div", { class: "kennel-map" });
+    kennels.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).forEach((k) => {
+      const occ = byKennel.get(k) || [];
+      const tile = el("div", { class: "kennel-tile " + (occ.length ? "occupied" : "open") });
+      tile.appendChild(el("div", { class: "kennel-tile-name", text: k }));
+      if (!occ.length) {
+        tile.appendChild(el("div", { class: "kennel-open-label", text: "Open" }));
+      } else {
+        occ.forEach((a) => tile.appendChild(el("div", { class: "kennel-occupant", onclick: () => openAnimalDetail(a) },
+          a.photo
+            ? el("span", { class: "kennel-av photo", style: `background-image:url(${a.photo})` })
+            : el("span", { class: "kennel-av", text: speciesEmoji(a.species) }),
+          el("span", { class: "kennel-occ-name", text: a.name || "(unnamed)" }),
+          el("span", { class: "dot " + statusClass(a.status), title: a.status || "" }))));
+      }
+      grid.appendChild(tile);
+    });
+    view.appendChild(grid);
+
+    if (unassigned.length) {
+      view.appendChild(el("h3", { class: "group-title", text: `Unassigned (${unassigned.length})` }));
+      const ug = el("div", { class: "kennel-unassigned" });
+      unassigned.sort((a, b) => (a.name || "").localeCompare(b.name || "")).forEach((a) =>
+        ug.appendChild(el("button", { class: "chip-btn", onclick: () => openAnimalDetail(a) }, speciesEmoji(a.species) + " " + (a.name || "(unnamed)"))));
+      view.appendChild(ug);
+    }
   }
 
   function filteredAnimals() {
@@ -1187,6 +1251,8 @@
       a.medical ? el("div", { class: "detail-block" }, el("h4", { text: "Medical" }), el("p", { text: a.medical })) : null,
       a.feeding ? el("div", { class: "detail-block" }, el("h4", { text: "Feeding" }), el("p", { text: a.feeding })) : null,
       a.notes ? el("div", { class: "detail-block" }, el("h4", { text: "Notes" }), el("p", { text: a.notes })) : null,
+      placementSection(a),
+      medicalLogSection(a),
       el("div", { class: "detail-block" },
         el("h4", { text: `Jobs (${openJobs.length} open)` }),
         openJobs.length
@@ -1202,6 +1268,195 @@
       ),
     );
     openModal(a.name || "Animal", body);
+  }
+
+  /* Save a patch to an animal, refresh, then re-open its detail so inline
+     sub-entries (log, placement, applications) update live. */
+  async function patchAnimal(a, patch, reopen = true) {
+    const res = await Store.save("animal", { ...a, ...patch });
+    if (!res.ok) { toast("Could not save", "err"); return null; }
+    await refresh();
+    if (reopen) {
+      const fresh = State.animals.find((x) => x.id === (res.item ? res.item.id : a.id));
+      if (fresh) openAnimalDetail(fresh);
+    }
+    return res.item || { ...a, ...patch };
+  }
+
+  /* ── Adoption / foster placement + applications ────────────────── */
+  const APP_STATUS = ["applied", "approved", "declined", "adopted"];
+  function placementSection(a) {
+    const apps = Array.isArray(a.applications) ? a.applications : [];
+    const block = el("div", { class: "detail-block" }, el("h4", { text: "Adoption / Foster" }));
+
+    if (a.placementType) {
+      block.appendChild(el("div", { class: "placement-card" },
+        el("div", {}, el("span", { class: "chip " + (a.placementType === "Adopted" ? "info" : "warn"), text: a.placementType }),
+          a.placementPerson ? el("strong", { class: "placement-person", text: " " + a.placementPerson }) : null),
+        el("div", { class: "muted small" },
+          (a.placementDate ? "Since " + fmtDate(a.placementDate) : "") +
+          (a.placementContact ? " · " + a.placementContact : "") +
+          (a.returnDate ? " · returned " + fmtDate(a.returnDate) : "")),
+        a.placementNote ? el("div", { class: "small", text: a.placementNote }) : null,
+      ));
+    } else {
+      block.appendChild(el("p", { class: "muted small", text: "No active foster or adoption recorded." }));
+    }
+    block.appendChild(el("button", { class: "link-btn brand", onclick: () => openPlacementForm(a) }, a.placementType ? "Update placement" : "+ Record foster / adoption"));
+
+    /* applications */
+    block.appendChild(el("div", { class: "sub-head", text: `Applications (${apps.length})` }));
+    if (apps.length) {
+      const list = el("div", { class: "app-list" });
+      apps.slice().sort((x, y) => (y.date || "").localeCompare(x.date || "")).forEach((ap) => {
+        list.appendChild(el("div", { class: "app-row" },
+          el("div", {}, el("strong", { text: ap.applicant || "—" }),
+            ap.contact ? el("span", { class: "muted small", text: " · " + ap.contact }) : null,
+            ap.note ? el("div", { class: "muted small", text: ap.note }) : null),
+          el("div", { class: "app-row-right" },
+            el("span", { class: "chip " + (ap.status === "approved" || ap.status === "adopted" ? "ok" : ap.status === "declined" ? "danger" : "ghost"), text: ap.status || "applied" }),
+            el("span", { class: "muted small", text: ap.date ? fmtDate(ap.date) : "" }),
+            el("button", { class: "link-btn danger", onclick: () => removeApplication(a, ap.id) }, "✕"))));
+      });
+      block.appendChild(list);
+    }
+    block.appendChild(el("button", { class: "link-btn brand", onclick: () => openApplicationForm(a) }, "+ Add application"));
+    return block;
+  }
+
+  function openPlacementForm(a) {
+    const statuses = State.settings.animalStatuses || [];
+    const form = el("form", { class: "modal-form" },
+      el("div", { class: "form-row" },
+        field("Placement", select("placementType", ["", "Foster", "Adopted"], a.placementType || "")),
+        field("Date", input("placementDate", a.placementDate || todayISO(), { type: "date" })),
+      ),
+      field("Person / family", input("placementPerson", a.placementPerson, { placeholder: "Foster or adopter name" })),
+      field("Contact", input("placementContact", a.placementContact, { placeholder: "Phone or email" })),
+      el("div", { class: "form-row" },
+        field("Return date (if returned)", input("returnDate", a.returnDate, { type: "date" })),
+        statuses.length ? field("Also set animal status to", select("syncStatus", ["", ...statuses], "")) : null,
+      ),
+      field("Note", textarea("placementNote", a.placementNote, { rows: 2 })),
+      el("div", { class: "modal-actions" }, el("span"),
+        el("div", {},
+          el("button", { type: "button", class: "ghost", onclick: () => openAnimalDetail(a) }, "Cancel"),
+          el("button", { type: "submit", class: "primary" }, "Save"))),
+    );
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const v = formValues(form);
+      const patch = {
+        placementType: v.placementType, placementDate: v.placementDate,
+        placementPerson: v.placementPerson, placementContact: v.placementContact,
+        returnDate: v.returnDate, placementNote: v.placementNote,
+      };
+      if (v.syncStatus) patch.status = v.syncStatus;
+      await patchAnimal(a, patch);
+    });
+    openModal("Foster / adoption", form);
+  }
+
+  function openApplicationForm(a) {
+    const form = el("form", { class: "modal-form" },
+      field("Applicant name", input("applicant", "", { required: true })),
+      field("Contact", input("contact", "", { placeholder: "Phone or email" })),
+      el("div", { class: "form-row" },
+        field("Date", input("date", todayISO(), { type: "date" })),
+        field("Status", select("status", APP_STATUS, "applied")),
+      ),
+      field("Note", textarea("note", "", { rows: 2 })),
+      el("div", { class: "modal-actions" }, el("span"),
+        el("div", {},
+          el("button", { type: "button", class: "ghost", onclick: () => openAnimalDetail(a) }, "Cancel"),
+          el("button", { type: "submit", class: "primary" }, "Add"))),
+    );
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const v = formValues(form);
+      if (!v.applicant.trim()) { toast("Applicant name required", "err"); return; }
+      const apps = Array.isArray(a.applications) ? a.applications.slice() : [];
+      apps.push({ id: uid(), applicant: v.applicant, contact: v.contact, date: v.date, status: v.status, note: v.note });
+      await patchAnimal(a, { applications: apps });
+    });
+    openModal("New application", form);
+  }
+  async function removeApplication(a, id) {
+    const apps = (a.applications || []).filter((x) => x.id !== id);
+    await patchAnimal(a, { applications: apps });
+  }
+
+  /* ── Medical & weight log ──────────────────────────────────────── */
+  const LOG_TYPES = ["Weight", "Vaccine", "Medication", "Exam", "Note"];
+  function medicalLogSection(a) {
+    const log = Array.isArray(a.history) ? a.history.slice() : [];
+    log.sort((x, y) => (y.date || "").localeCompare(x.date || ""));
+    const block = el("div", { class: "detail-block" }, el("h4", { text: "Medical & weight log" }));
+
+    const weights = log.filter((e) => e.type === "Weight" && e.value).map((e) => ({ date: e.date, n: parseFloat(e.value), unit: e.unit || "" }))
+      .filter((w) => !isNaN(w.n));
+    if (weights.length) {
+      const latest = weights[0];
+      const prev = weights[1];
+      const delta = prev ? latest.n - prev.n : 0;
+      block.appendChild(el("div", { class: "weight-trend" },
+        el("span", { class: "weight-now", text: `${latest.n} ${latest.unit}` }),
+        prev ? el("span", { class: "weight-delta " + (delta > 0 ? "up" : delta < 0 ? "down" : ""), text: (delta > 0 ? "▲ +" : delta < 0 ? "▼ " : "± ") + round(Math.abs(delta)) + " " + latest.unit + " since " + fmtDate(prev.date) }) : el("span", { class: "muted small", text: "latest weight" })));
+    }
+
+    if (log.length) {
+      const list = el("div", { class: "log-list" });
+      log.forEach((e) => {
+        list.appendChild(el("div", { class: "log-row" },
+          el("span", { class: "log-date", text: e.date ? fmtDate(e.date) : "" }),
+          el("span", { class: "chip ghost log-type", text: e.type || "Note" }),
+          el("span", { class: "log-main" },
+            e.value ? el("strong", { text: e.value + (e.unit ? " " + e.unit : "") + (e.note ? " — " : "") }) : null,
+            e.note ? document.createTextNode(e.note) : null),
+          el("button", { class: "link-btn danger", onclick: () => removeLogEntry(a, e.id) }, "✕")));
+      });
+      block.appendChild(list);
+    } else {
+      block.appendChild(el("p", { class: "muted small", text: "No log entries yet." }));
+    }
+    block.appendChild(el("button", { class: "link-btn brand", onclick: () => openLogForm(a) }, "+ Add log entry"));
+    return block;
+  }
+
+  function openLogForm(a) {
+    const typeSel = select("type", LOG_TYPES, "Weight");
+    const unit = input("unit", "lb", { placeholder: "unit", class: "log-unit" });
+    const valField = field("Value", el("div", { class: "log-value-row" }, input("value", "", { placeholder: "e.g. 14.2" }), unit));
+    const syncWeight = () => { unit.style.display = typeSel.value === "Weight" ? "" : "none"; };
+    typeSel.addEventListener("change", syncWeight);
+    const form = el("form", { class: "modal-form" },
+      el("div", { class: "form-row" },
+        field("Type", typeSel),
+        field("Date", input("date", todayISO(), { type: "date" })),
+      ),
+      valField,
+      field("Note", textarea("note", "", { rows: 2, placeholder: "Details (vaccine name, dose, findings…)" })),
+      el("div", { class: "modal-actions" }, el("span"),
+        el("div", {},
+          el("button", { type: "button", class: "ghost", onclick: () => openAnimalDetail(a) }, "Cancel"),
+          el("button", { type: "submit", class: "primary" }, "Add entry"))),
+    );
+    syncWeight();
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const v = formValues(form);
+      if (!v.value && !v.note) { toast("Add a value or note", "err"); return; }
+      const log = Array.isArray(a.history) ? a.history.slice() : [];
+      log.push({ id: uid(), date: v.date, type: v.type, value: v.value, unit: v.type === "Weight" ? v.unit : "", note: v.note, by: State.me.username });
+      const patch = { history: log };
+      if (v.type === "Weight" && v.value) patch.weight = v.value + (v.unit ? " " + v.unit : ""); /* keep summary weight current */
+      await patchAnimal(a, patch);
+    });
+    openModal("Log entry", form);
+  }
+  async function removeLogEntry(a, id) {
+    const log = (a.history || []).filter((x) => x.id !== id);
+    await patchAnimal(a, { history: log });
   }
 
   function openAnimalForm(animal) {
@@ -1324,17 +1579,19 @@
   function renderSupplies() {
     const view = $("#view-supplies");
     view.innerHTML = "";
-    const animalCount = State.animals.filter((a) => !/adopt/i.test(a.status || "")).length;
-    view.appendChild(sectionHeader(
+    const animalCount = State.animals.filter(inCare).length;
+    const head = sectionHeader(
       "Supplies", `Inventory needs scale with current animals in care (${animalCount}).`,
       "+ Add supply", () => openSupplyForm()
-    ));
+    );
+    view.appendChild(head);
 
     const lows = State.supplies.filter((s) => daysRemaining(s, animalCount) != null && daysRemaining(s, animalCount) <= (Number(s.reorderDays) || 7));
     if (lows.length) {
       view.appendChild(el("div", { class: "alert" },
         el("strong", { text: "⚠ Low stock: " }),
-        document.createTextNode(lows.map((s) => s.name).join(", ") + ". Time to reorder.")));
+        document.createTextNode(lows.map((s) => s.name).join(", ") + ". "),
+        el("button", { class: "link-btn brand", onclick: () => openShoppingList(animalCount) }, "Open shopping list →")));
     }
 
     if (!State.supplies.length) {
@@ -1364,6 +1621,7 @@
         el("td", { text: days == null ? "—" : (days >= 999 ? "—" : round(days) + " d") }),
         el("td", {}, el("span", { class: "chip " + (low ? "danger" : "ok"), text: low ? "Reorder" : "OK" })),
         el("td", { class: "row-actions" },
+          el("button", { class: "link-btn", onclick: () => restockSupply(s) }, "Restock"),
           el("button", { class: "link-btn", onclick: () => openSupplyForm(s) }, "Edit"),
           el("button", { class: "link-btn danger", onclick: () => removeItem("supply", s.id, "Delete this supply?") }, "Delete"))
       ));
@@ -1390,6 +1648,64 @@
     const next = Math.max(0, round(num(s.quantity) + delta));
     const res = await Store.save("supply", { ...s, quantity: next });
     if (res.ok) await refresh();
+  }
+  async function restockSupply(s) {
+    const amount = prompt(`How much ${s.unit || "units"} of "${s.name}" did you add?`, "");
+    if (amount == null) return;
+    const add = parseFloat(amount);
+    if (isNaN(add)) { toast("Enter a number", "err"); return; }
+    const next = Math.max(0, round(num(s.quantity) + add));
+    const res = await Store.save("supply", { ...s, quantity: next, lastRestocked: todayISO() });
+    if (res.ok) { toast(`Restocked ${s.name}`); await refresh(); }
+  }
+
+  /* Suggested order quantity: enough to reach a target days-of-stock buffer
+     (default 30 days) given current per-animal usage. */
+  function suggestedOrder(s, animalCount, targetDays = 30) {
+    const daily = dailyUse(s, animalCount);
+    if (!daily) return null;
+    const need = daily * targetDays - num(s.quantity);
+    return need > 0 ? Math.ceil(need) : 0;
+  }
+
+  function openShoppingList(animalCount) {
+    const lows = State.supplies
+      .filter((s) => { const d = daysRemaining(s, animalCount); return d != null && d <= (Number(s.reorderDays) || 7); })
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const body = el("div", {});
+    if (!lows.length) { body.appendChild(el("p", { class: "muted", text: "Nothing needs reordering right now. 🎉" })); openModal("Shopping list", body); return; }
+
+    let text = "Aurora Sanctuary — reorder list (" + todayISO() + ")\n";
+    const table = el("table", { class: "data-table shopping" });
+    table.appendChild(el("thead", {}, el("tr", {}, ...["Supply", "On hand", "Suggested order"].map((h) => el("th", { text: h })))));
+    const tbody = el("tbody");
+    lows.forEach((s) => {
+      const order = suggestedOrder(s, animalCount, 30);
+      const orderStr = order ? `${order} ${s.unit || ""}` : "—";
+      text += `• ${s.name}: have ${num(s.quantity)} ${s.unit || ""}, order ~${orderStr}\n`;
+      tbody.appendChild(el("tr", {},
+        el("td", { "data-label": "Supply" }, el("strong", { text: s.name }), s.category ? el("div", { class: "muted small", text: s.category }) : null),
+        el("td", { "data-label": "On hand", text: `${num(s.quantity)} ${s.unit || ""}` }),
+        el("td", { "data-label": "Suggested order", text: orderStr })));
+    });
+    table.appendChild(tbody);
+    body.appendChild(el("p", { class: "muted small", text: "Suggested amounts aim for ~30 days of stock at current animal counts." }));
+    body.appendChild(el("div", { class: "table-wrap" }, table));
+    body.appendChild(el("div", { class: "modal-actions" }, el("span"),
+      el("div", {},
+        el("button", { class: "ghost", onclick: () => { navigator.clipboard && navigator.clipboard.writeText(text); toast("Copied to clipboard"); } }, "Copy list"),
+        el("button", { class: "primary", onclick: () => printText("Reorder list", text) }, "🖨 Print"))));
+    openModal("Shopping list", body);
+  }
+
+  function printText(title, text) {
+    const surface = $("#printSurface");
+    surface.innerHTML = "";
+    surface.appendChild(el("div", { class: "print-text" }, el("h2", { text: title }), el("pre", { text })));
+    document.body.classList.add("printing-cards");
+    const cleanup = () => { document.body.classList.remove("printing-cards"); window.removeEventListener("afterprint", cleanup); };
+    window.addEventListener("afterprint", cleanup);
+    setTimeout(() => window.print(), 60);
   }
 
   function openSupplyForm(supply) {
