@@ -738,6 +738,8 @@
     const leukocytosis = p.wbc != null && p.wbc >= 12;
     const lowVitD = p.vitamin_d != null && p.vitamin_d < 20;
     const lowPerfusionTcpo2 = p.tcpo2 != null && p.tcpo2 < 40;
+    const toePressureLow = p.toe_pressure != null && p.toe_pressure < 30;
+    const toePressureBorderline = p.toe_pressure != null && p.toe_pressure >= 30 && p.toe_pressure < 55;
 
     /* Build human-readable optimization guidance for the considerations */
     const optimization = [];
@@ -764,12 +766,15 @@
     if (ckd) optimization.push(`Renal impairment present${esrd ? " (ESRD/dialysis)" : ""} — adjust renally-cleared antibiotics; watch fluid balance affecting edema`);
     if (esrd && onAnticoagulation) optimization.push("ESRD + anticoagulation — heightened calciphylaxis risk; reassess warfarin if retiform purpura or disproportionate pain develops");
     if (lowPerfusionTcpo2) optimization.push(`Low tissue oxygenation — TcPO₂ ${p.tcpo2} mmHg suggests impaired perfusion; vascular evaluation before aggressive debridement`);
+    if (toePressureLow) optimization.push(`Critical ischemia — toe pressure ${p.toe_pressure} mmHg (< 30 mmHg); healing unlikely without revascularization. Urgent vascular referral.`);
+    else if (toePressureBorderline) optimization.push(`Low toe pressure ${p.toe_pressure} mmHg — borderline perfusion; healing potential uncertain, vascular evaluation recommended.`);
 
     return {
       bmi, lowAlbumin, severeHypoalbuminemia, lowPrealbumin, malnutritionRisk,
       suboptimalGlycemic, poorGlycemic, anemia, currentSmoker, formerSmoker,
       immunosuppressed, ckd, esrd, onAnticoagulation, obesity, neuropathy,
       elevatedEsr, elevatedCrp, leukocytosis, lowVitD, lowPerfusionTcpo2,
+      toePressureLow, toePressureBorderline,
       optimization,
     };
   }
@@ -3823,6 +3828,11 @@
       worsening = true;
     }
 
+    /* Lab-based signal elevation */
+    if (patientFactors.leukocytosis && (effectiveInfectionSigns.length || worsening)) {
+      potentialBioburden = true;
+    }
+
     if (reportSignals.stableDryHeelEscharSignal && locationText.includes("heel")) {
       heelStableEscharException = true;
     }
@@ -3874,6 +3884,8 @@
       hasTunneling, hasUndermining, tunnelingDepthCm,
       abiDocumented, abiInadequateForCompression, abiMildImpairment, abiRange,
       diabeticSuboptimal4WeekProgress, venousSuboptimal4WeekProgress,
+      perfusionDebridementRisk: patientFactors.lowPerfusionTcpo2 || patientFactors.toePressureLow,
+      glycemicBarrier: patientFactors.poorGlycemic && diabeticFootRelated,
       manualOverridesApplied: Boolean(
         manual.diabetic ||
         manual.thickness ||
@@ -4555,6 +4567,36 @@
 
     if (context.diabeticFootRelated && (context.potentialBioburden || context.worsening)) {
       add("medium", "Diabetic-foot with bioburden/worsening signal: reassess infection depth and escalate promptly if systemic signs appear.");
+    }
+
+    /* Lab-based safety signals */
+    const pf = context.patientFactors || {};
+    const pp = context.patientProfile || {};
+    if (pf.toePressureLow || pf.lowPerfusionTcpo2) {
+      const vals = [
+        pf.toePressureLow ? `toe pressure ${pp.toe_pressure} mmHg` : null,
+        pf.lowPerfusionTcpo2 ? `TcPO₂ ${pp.tcpo2} mmHg` : null,
+      ].filter(Boolean).join(", ");
+      add("high", `Critical perfusion impairment (${vals}) — debridement is high-risk without revascularization. Urgent vascular referral required.`);
+    } else if (pf.toePressureBorderline) {
+      add("medium", `Borderline toe pressure (${pp.toe_pressure} mmHg) — healing potential uncertain; use conservative debridement approach until vascular status clarified.`);
+    }
+    if (pf.leukocytosis) {
+      const infxn = Array.isArray(context.effectiveInfectionSigns) && context.effectiveInfectionSigns.length;
+      add("medium", `Leukocytosis (WBC ${pp.wbc} k/µL) ${infxn ? "with local infection signs" : "without overt local signs"} — evaluate for systemic infection source; low threshold for blood cultures and infectious disease consult.`);
+    }
+    if ((pf.elevatedCrp || pf.elevatedEsr) && (context.osteomyelitisSignal || context.diabeticFootRelated)) {
+      const markers = [pf.elevatedCrp ? `CRP ${pp.crp} mg/L` : null, pf.elevatedEsr ? `ESR ${pp.esr} mm/hr` : null].filter(Boolean).join(", ");
+      add("medium", `Elevated inflammatory markers (${markers}) with diabetic foot / osteomyelitis risk — supports deeper infectious workup (MRI, bone biopsy, deep tissue culture).`);
+    } else if (pf.elevatedCrp || pf.elevatedEsr) {
+      const markers = [pf.elevatedCrp ? `CRP ${pp.crp} mg/L` : null, pf.elevatedEsr ? `ESR ${pp.esr} mm/hr` : null].filter(Boolean).join(", ");
+      add("low", `Elevated inflammatory markers (${markers}) — monitor for wound infection progression.`);
+    }
+    if (context.glycemicBarrier) {
+      add("medium", `Poor glycemic control (HbA1c ${pp.hba1c}%) in diabetic foot wound — impairs leukocyte function and collagen synthesis; coordinate with PCP/endocrinology concurrently with wound management.`);
+    }
+    if (pf.severeHypoalbuminemia) {
+      add("medium", `Severe hypoalbuminemia (albumin ${pp.albumin} g/dL) — significantly impairs wound healing capacity; nutritional intervention is a priority concurrent with wound management.`);
     }
 
     if (Array.isArray(context.effectiveInfectionSigns) && context.effectiveInfectionSigns.length) {
@@ -5607,7 +5649,7 @@
     const effectiveFrequency = prioritizedFrequency.length
       ? prioritizedFrequency
       : fallbackSteps(
-        (context.exudateProxy || context.potentialBioburden || context.debridementNeeded || context.effectiveInfectionSigns?.length)
+        (context.exudateProxy || context.potentialBioburden || context.debridementNeeded || context.effectiveInfectionSigns?.length || context.glycemicBarrier)
           ? ["Daily and PRN for saturation/soiling"]
           : ["Every 48-72 hours and PRN soiling"],
         1,
@@ -8375,11 +8417,44 @@
 
     /* Nutrition / Dietitian */
     const p = c.patientProfile || {};
+    const pf = c.patientFactors || {};
     const bradenNutrition = p.braden_nutrition != null ? Number(p.braden_nutrition) : null;
     if (bradenNutrition != null && bradenNutrition <= 2) {
       add("Registered Dietitian", `Braden nutrition subscale ${bradenNutrition}/4 — nutrition assessment and intervention needed to support wound healing.`, "routine", "Nutritional deficiency impairs all phases of wound healing. RD involvement improves healing outcomes, particularly for pressure injuries.");
     } else if (c.pressureRelated && c.chronic) {
       add("Registered Dietitian", "Chronic pressure injury — formal nutrition assessment recommended (protein, calorie, micronutrient status).", "routine", "Protein-calorie malnutrition is prevalent in PI patients. Targeted supplementation (arginine, vitamin C, zinc) has RCT evidence for Stage 3/4 PI.");
+    }
+    if (pf.severeHypoalbuminemia) {
+      add("Registered Dietitian / Nutrition Support", `Severe hypoalbuminemia (albumin ${p.albumin} g/dL) — urgent nutrition support consult; target protein ≥ 1.5 g/kg/day and consider high-protein supplementation or enteral support.`, "routine", "Albumin < 3.0 g/dL predicts poor wound healing and increased infection risk. Aggressive nutritional repletion is required alongside wound management.");
+    }
+
+    /* Perfusion — TcPO₂ / Toe pressure */
+    if (pf.toePressureLow) {
+      add("Vascular Surgery", `Toe pressure ${p.toe_pressure} mmHg (< 30 mmHg) — critical ischemia; healing is unlikely without revascularization. Urgent vascular assessment.`, "urgent", "Toe pressure < 30 mmHg indicates critical limb ischemia. Revascularization (endovascular or bypass) should be evaluated before debridement or advanced wound therapy.");
+    } else if (pf.toePressureBorderline && c.stalled) {
+      add("Vascular Surgery", `Toe pressure ${p.toe_pressure} mmHg (borderline) with stalled healing — non-invasive vascular study and revascularization evaluation recommended.`, "routine", "Toe pressure 30–55 mmHg represents borderline perfusion; stalled healing in this range warrants vascular input to improve healing potential.");
+    }
+    if (pf.lowPerfusionTcpo2 && !pf.toePressureLow) {
+      add("Vascular Surgery", `TcPO₂ ${p.tcpo2} mmHg — tissue oxygenation below threshold for reliable healing; vascular evaluation and HBOT candidacy assessment recommended.`, "urgent", "TcPO₂ < 40 mmHg predicts poor healing. HBOT candidacy (typically requires TcPO₂ 100–200 mmHg on 100% O₂) should be assessed alongside revascularization options.");
+    }
+
+    /* Glycemic control */
+    if (c.glycemicBarrier) {
+      add("Endocrinology / Primary Care", `HbA1c ${p.hba1c}% (poor glycemic control) in active diabetic foot wound — endocrinology or PCP referral to intensify glucose management.`, "routine", "HbA1c > 8% substantially impairs neutrophil function and collagen synthesis. Improved glycemic control is an independent predictor of DFU healing.");
+    } else if (pf.suboptimalGlycemic && c.diabeticFootRelated) {
+      add("Primary Care", `HbA1c ${p.hba1c}% — suboptimal glycemic control in diabetic foot wound; coordinate glucose management with PCP alongside wound care.`, "routine", "Even modest glycemic improvement (HbA1c reduction toward < 7%) improves wound healing trajectory.");
+    }
+
+    /* Infectious Disease — elevated inflammatory markers */
+    if ((pf.leukocytosis || pf.elevatedCrp || pf.elevatedEsr) && (c.osteomyelitisSignal || c.diabeticFootRelated)) {
+      const markers = [
+        pf.leukocytosis ? `WBC ${p.wbc} k/µL` : null,
+        pf.elevatedCrp  ? `CRP ${p.crp} mg/L`   : null,
+        pf.elevatedEsr  ? `ESR ${p.esr} mm/hr`   : null,
+      ].filter(Boolean).join(", ");
+      add("Infectious Disease", `Elevated systemic inflammatory markers (${markers}) with diabetic foot / osteomyelitis risk — ID consult for antibiotic guidance and deep tissue / bone culture.`, "urgent", "Surface swabs are unreliable for identifying pathogens in osteomyelitis. ID-directed bone biopsy and targeted antibiotics significantly improve outcomes.");
+    } else if (pf.leukocytosis && c.worsening) {
+      add("Infectious Disease / Hospitalist", `Leukocytosis (WBC ${p.wbc} k/µL) with worsening wound — evaluate for systemic infection; consider blood cultures and infectious disease consult.`, "routine", "Wound deterioration with systemic leukocytosis warrants evaluation for bacteremia or deep soft tissue infection.");
     }
 
     return triggers;
