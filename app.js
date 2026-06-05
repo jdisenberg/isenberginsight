@@ -421,7 +421,6 @@
     narrativePanel: document.getElementById("narrativePanel"),
     narrativeText: document.getElementById("narrativeText"),
     narrativeStyle: document.getElementById("narrativeStyle"),
-    copyAllNotesBtn: document.getElementById("copyAllNotesBtn"),
     cmsGuidePanel: document.getElementById("cmsGuidePanel"),
     cmsGuideText: document.getElementById("cmsGuideText"),
     nameGateOverlay: document.getElementById("nameGateOverlay"),
@@ -8301,57 +8300,6 @@
       </details>`;
   }
 
-  /* ── Plain-text export for Copy All Notes ──────────────────────────────── */
-  function buildPlainTextExport(rows) {
-    if (!rows || !rows.length) return "";
-    const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-    const lines = [`WOUND CARE DOCUMENTATION — ${today}`, "=".repeat(48)];
-
-    const patientGroups = new Map();
-    for (const row of rows) {
-      const name = normalizePersonName(String(row.name || "Unknown patient").trim()) || "Unknown patient";
-      const mrn = String(row.mrn || "").trim();
-      const key = `${name}|${mrn}`;
-      if (!patientGroups.has(key)) patientGroups.set(key, { name, mrn, wounds: [] });
-      patientGroups.get(key).wounds.push(row);
-    }
-
-    for (const patient of patientGroups.values()) {
-      lines.push("", `PATIENT: ${patient.name}${patient.mrn ? ` (MRN: ${patient.mrn})` : ""}`, "-".repeat(40));
-      for (const row of patient.wounds) {
-        const label = [row.wound_type, row.location].filter(Boolean).join(" — ") || "Wound";
-        lines.push("", `[ ${label} ]`);
-        const seg = buildWoundNarrativeSegment(row, "detailed");
-        if (seg) lines.push(seg.replace(/\s+/g, " ").trim());
-
-        const scores = buildWoundScores(row);
-        if (scores.length) {
-          lines.push("", "WOUND SCORES:");
-          for (const s of scores) {
-            lines.push(`  • ${s.name}: ${s.value}`);
-            if (s.interpretation) lines.push(`    ${s.interpretation}`);
-          }
-        }
-
-        const triggers = buildReferralTriggers(row);
-        if (triggers.length) {
-          lines.push("", "REFERRAL CONSIDERATIONS:");
-          for (const t of triggers) {
-            lines.push(`  ${t.urgency === "urgent" ? "⚠ URGENT" : "○ Routine"}: ${t.specialty}`);
-            lines.push(`    ${t.reason}`);
-          }
-        }
-
-        const icd10 = buildICD10Suggestions(row);
-        const cpts = buildCPTSuggestions(row);
-        if (icd10.length) lines.push("", "ICD-10: " + icd10.map((c2) => `${c2.code} (${c2.description})`).join(", "));
-        if (cpts.length) lines.push("CPT:    " + cpts.map((c2) => `${c2.code} (${c2.description})`).join(", "));
-      }
-      lines.push("", "=".repeat(48));
-    }
-    return lines.join("\n");
-  }
-
   function buildChartNarrative(rows, style = "detailed") {
     if (!rows.length) {
       return '<p class="narrative-empty">No wound entries were generated yet.</p>';
@@ -10362,30 +10310,6 @@
           btn.textContent = "Copied ✓";
           setTimeout(() => { btn.textContent = "Copy Narrative"; }, 2000);
         }
-      });
-    }
-
-    if (els.copyAllNotesBtn) {
-      els.copyAllNotesBtn.addEventListener("click", async () => {
-        const btn = els.copyAllNotesBtn;
-        const rows = latestOutputs?.detailedRows;
-        if (!rows || !rows.length) { setStatus("Generate considerations first."); return; }
-        const text = buildPlainTextExport(rows);
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch {
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          ta.style.cssText = "position:fixed;opacity:0;pointer-events:none;";
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand("copy");
-          document.body.removeChild(ta);
-        }
-        const original = btn.textContent;
-        btn.textContent = "Copied ✓";
-        btn.disabled = true;
-        setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2500);
       });
     }
 

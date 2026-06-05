@@ -2634,20 +2634,6 @@ body.name-gate-active {
   }
 }
 
-/* ── Copy All Button ─────────────────────────────────────────────────────── */
-.copy-all-btn {
-  font-size: 0.82rem;
-  padding: 5px 12px;
-  border-radius: 6px;
-  border: 1.5px solid var(--accent);
-  background: #fff;
-  color: var(--accent);
-  cursor: pointer;
-  font-weight: 600;
-  transition: background 0.15s, color 0.15s;
-}
-.copy-all-btn:hover { background: var(--accent); color: #fff; }
-.copy-all-btn:active { opacity: 0.85; }
 
 /* ── Referral Triggers Block ─────────────────────────────────────────────── */
 .ref-section {
