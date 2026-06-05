@@ -1227,10 +1227,10 @@
 
       if (zoomed) {
         ctx.restore(); /* reset transform */
-        /* "3× ZOOM" badge so the user knows they're in zoom mode */
+        /* "3× ZOOM" badge — use fillRect, ctx.roundRect not available in all Safari */
         ctx.save();
         ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.beginPath(); ctx.roundRect(6, 6, 76, 22, 5); ctx.fill();
+        ctx.fillRect(6, 6, 78, 22);
         ctx.fillStyle = "#fff"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "left";
         ctx.fillText("3× ZOOM", 12, 21);
         ctx.restore();
@@ -1376,7 +1376,7 @@
         /* cancel zoom timer if finger moved more than ~8 css px */
         const dx = Math.abs(src.clientX - holdStartClientX);
         const dy = Math.abs(src.clientY - holdStartClientY);
-        if (dx > 8 || dy > 8) {
+        if (dx > 18 || dy > 18) {
           clearTimeout(holdTimer); holdTimer = null;
           /* treat as start of draw stroke */
           const pt = eventToImagePt(evt); if (!pt) return;
